@@ -1,0 +1,94 @@
+#include "FNNTrainingAgent.h"
+#include "FileManager.h"
+#include "PCAnalyser.h"
+
+template<typename T>
+static void print(const std::vector<T>& vec) {
+	for (size_t i{}; i < vec.size(); i++)
+		std::cout << vec[i] << "\n";
+	return;
+}
+
+static void testFnn() {
+	//auto dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_train.csv");
+	std::vector<double> elo({ 1,2,3 }), elo2({ 2,3,4 });
+	mfuncs::addVectors(elo, elo2);
+	FNN fnn;
+
+	//fnn.addInputLayer(784);
+	//fnn.addLayer(16);
+	//fnn.addLayer(16);
+	//fnn.addOutputLayer(10);
+	//fnn.setActivationFunction(ActivationFunction::SIGMOID);
+	//fnn.setOutputLayerActivationFunction(ActivationFunction::SOFTMAX);
+	// 
+	//FileManager::saveLayerToCSV(nn.layers[1], "C:/Users/zimor/Documents/Layer1");
+	fnn = FileManager::loadFNN("C:/Users/zimor/Documents/NN_91.5Acc");
+	//fnn.setActivationFunction(MathFunctions::sigmoid, MathFunctions::dSigmoid);
+	//for (size_t i{}; i < nn.layers.size(); i++) {
+	//	std::cout << nn.layers[i]->neuronCount << "\n";
+	//}
+
+	//nn.process(dataset.inputVector[0]);
+
+
+	//FNNTrainingAgent::trainFNN(fnn, dataset, 2, 0.05, true);
+
+	Dataset dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_test.csv");
+	std::cout << "\n" << FNNTrainingAgent::testFNN(fnn, dataset);
+	//std::cout << "\n";
+
+	std::string filePath{ "C:/Users/zimor/Pictures/3.bmp" };
+	fnn.process(FileManager::getInputVectorFrom28x28BMP(filePath));
+	std::vector<double> outputArr = fnn.getOutput();
+	//for (int i = 0; i < 10; i++) {
+	//	std::cout << outputArr[i] << "\n";
+	//}
+	std::cout << "\n" << mfuncs::convertOutputVectorToDigit(outputArr);
+
+	//std::vector<double> desiredOut({0, 0, 0, 1, 0, 0, 0, 0, 0, 0});
+	//std::vector<double> input = FileManager::getInputVectorFrom28x28BMP("C:/Users/zimor/Pictures/3.bmp");
+	//auto testDataset = Dataset{ {input}, {desiredOut} };
+	//FileManager::SaveDatasetToCSV(testDataset, "C:/Users/zimor/Pictures/elo.csv");
+	//std::cout << "\n\n" << MathFunctions::convertOutputVectorToDigit(desiredOut);
+	//nn.process(inputArr);
+	//std::cout << "\n\n";
+	//outputArr = nn.getOutput();
+	//for (int i = 0; i < 10; i++) {
+	//	std::cout << outputArr[i] << "\n";
+	//}
+	//std::cout << "\n\n" << nn.getCost(desiredOut);
+
+	FileManager::saveFNN(fnn, "C:/Users/zimor/Documents");
+}
+
+static void testMatrix() {
+	Matrix dataMatrix(3, 3);
+	//dataMatrix.setContent({ {1,1,1}, {1, 2,1}, {1,1,2} });
+	dataMatrix.fillWithRandomIntegers(1, 10);
+	std::cout << dataMatrix;
+	dataMatrix = mfuncs::getMeanCenteredMatrix(dataMatrix);
+	std::cout << dataMatrix;
+	auto bidiagonal = SVDAgent<double>::bidiagonalize(dataMatrix);
+	std::cout << "\n";
+	std::cout << bidiagonal.B;
+	std::cout << "\n";
+	std::cout << bidiagonal.U1;
+	std::cout << "\n";
+	std::cout << bidiagonal.V1_T;
+	std::cout << "\n";
+	//SVDAgent::getSVD(dataMatrix).print();
+	std::cout << ((bidiagonal.U1 * bidiagonal.B) * bidiagonal.V1_T);
+	std::cout << "\n";
+	std::cout << dataMatrix;
+	dataMatrix.clear();
+	std::cout << "\n";
+	std::cout << dataMatrix;
+	//auto dV = SVDAgent::getBidiagonalVectors(bidiagonal);
+	//print(dV.diagonal);
+	//printVector(dV.superDiagonal);
+}
+
+int main() {
+	testMatrix();
+}

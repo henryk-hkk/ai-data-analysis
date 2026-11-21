@@ -1,0 +1,126 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Neural networks">
+      <UniqueIdentifier>{c762a10c-0154-42bc-a5d5-d05cb1675caf}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\FNN">
+      <UniqueIdentifier>{f3e9a946-1928-4deb-b222-9907a441657c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\LSTM">
+      <UniqueIdentifier>{c505caeb-4c3a-4ede-a62f-8b0909e490da}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\FNN\Headers">
+      <UniqueIdentifier>{f0dfb595-ce03-4866-a550-f0087559caa3}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\FNN\SrcFiles">
+      <UniqueIdentifier>{4de6482f-832b-4927-bc6a-1fd3fe9528b0}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\LSTM\Headers">
+      <UniqueIdentifier>{327a7b22-8f19-4438-8af9-daefaae70009}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils">
+      <UniqueIdentifier>{fb9c3c63-9518-4a92-9b09-74ccf79d0ee9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Main source files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Data analysis">
+      <UniqueIdentifier>{ef535e68-23e4-48e6-81ab-59b6f24044a4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils\Math">
+      <UniqueIdentifier>{f321195f-025c-4812-afd5-d7807f960328}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Data analysis\Headers">
+      <UniqueIdentifier>{8218fea9-78c6-4f18-8d20-2c50bbe05fdb}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils\Math\Matrix">
+      <UniqueIdentifier>{7a940ff2-ef33-413d-b287-c90d7b45268c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils\Cuda">
+      <UniqueIdentifier>{57c35188-bd5e-44ac-b429-f1281bc0be44}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="FNN.h">
+      <Filter>Neural networks\FNN\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="FNNLayers.h">
+      <Filter>Neural networks\FNN\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="FNNTrainingAgent.h">
+      <Filter>Neural networks\FNN\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="LSTM.h">
+      <Filter>Neural networks\LSTM\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="LSTMCell.h">
+      <Filter>Neural networks\LSTM\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="LSTMLayer.h">
+      <Filter>Neural networks\LSTM\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Neuron.h">
+      <Filter>Neural networks</Filter>
+    </ClInclude>
+    <ClInclude Include="mfuncs.h">
+      <Filter>Utils\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="FileManager.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Dataset.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="PCAnalyser.h">
+      <Filter>Data analysis\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="SVDAgent.h">
+      <Filter>Data analysis\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Concepts.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="Matrix.h">
+      <Filter>Utils\Math\Matrix</Filter>
+    </ClInclude>
+    <ClInclude Include="Dimensions.h">
+      <Filter>Utils</Filter>
+    </ClInclude>
+    <ClInclude Include="ActivationFunction.h">
+      <Filter>Utils\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="CudaBackend.hpp">
+      <Filter>Utils\Cuda</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>Main source files</Filter>
+    </ClCompile>
+    <ClCompile Include="mfuncs.cpp">
+      <Filter>Utils\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Neuron.cpp">
+      <Filter>Neural networks</Filter>
+    </ClCompile>
+    <ClCompile Include="FNN.cpp">
+      <Filter>Neural networks\FNN\SrcFiles</Filter>
+    </ClCompile>
+    <ClCompile Include="FNNLayers.cpp">
+      <Filter>Neural networks\FNN\SrcFiles</Filter>
+    </ClCompile>
+    <ClCompile Include="FNNTrainingAgent.cpp">
+      <Filter>Neural networks\FNN\SrcFiles</Filter>
+    </ClCompile>
+    <ClCompile Include="MatrixLayout.h">
+      <Filter>Utils\Math\Matrix</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="CudaBackend.cu">
+      <Filter>Utils\Cuda</Filter>
+    </CudaCompile>
+  </ItemGroup>
+</Project>
