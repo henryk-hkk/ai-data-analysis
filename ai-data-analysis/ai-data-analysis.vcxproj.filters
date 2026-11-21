@@ -13,9 +13,6 @@
     <Filter Include="Neural networks\FNN\Headers">
       <UniqueIdentifier>{f0dfb595-ce03-4866-a550-f0087559caa3}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Neural networks\FNN\SrcFiles">
-      <UniqueIdentifier>{4de6482f-832b-4927-bc6a-1fd3fe9528b0}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Neural networks\LSTM\Headers">
       <UniqueIdentifier>{327a7b22-8f19-4438-8af9-daefaae70009}</UniqueIdentifier>
     </Filter>
@@ -41,15 +38,18 @@
     <Filter Include="Utils\Cuda">
       <UniqueIdentifier>{57c35188-bd5e-44ac-b429-f1281bc0be44}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Neural networks\FNN\Matrix">
+      <UniqueIdentifier>{ad6f14ef-7ef1-4013-b8fd-99be897b19f7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Neural networks\FNN\Object">
+      <UniqueIdentifier>{15ff0731-26b0-43a1-8043-9962cde3a90c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Datasets">
+      <UniqueIdentifier>{d809b772-c373-457c-9204-1e2b14aad1da}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="FNN.h">
-      <Filter>Neural networks\FNN\Headers</Filter>
-    </ClInclude>
     <ClInclude Include="FNNLayers.h">
-      <Filter>Neural networks\FNN\Headers</Filter>
-    </ClInclude>
-    <ClInclude Include="FNNTrainingAgent.h">
       <Filter>Neural networks\FNN\Headers</Filter>
     </ClInclude>
     <ClInclude Include="LSTM.h">
@@ -94,6 +94,18 @@
     <ClInclude Include="CudaBackend.hpp">
       <Filter>Utils\Cuda</Filter>
     </ClInclude>
+    <ClInclude Include="LayerVectors.h">
+      <Filter>Neural networks\FNN\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="MatrixFNNTrainingAgent.h">
+      <Filter>Neural networks\FNN\Matrix</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectFNN.h">
+      <Filter>Neural networks\FNN\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectFNNTrainingAgent.h">
+      <Filter>Neural networks\FNN\Object</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -102,25 +114,27 @@
     <ClCompile Include="mfuncs.cpp">
       <Filter>Utils\Math</Filter>
     </ClCompile>
-    <ClCompile Include="Neuron.cpp">
-      <Filter>Neural networks</Filter>
-    </ClCompile>
-    <ClCompile Include="FNN.cpp">
-      <Filter>Neural networks\FNN\SrcFiles</Filter>
-    </ClCompile>
-    <ClCompile Include="FNNLayers.cpp">
-      <Filter>Neural networks\FNN\SrcFiles</Filter>
-    </ClCompile>
-    <ClCompile Include="FNNTrainingAgent.cpp">
-      <Filter>Neural networks\FNN\SrcFiles</Filter>
-    </ClCompile>
     <ClCompile Include="MatrixLayout.h">
       <Filter>Utils\Math\Matrix</Filter>
+    </ClCompile>
+    <ClCompile Include="FNNLayersMatrixForms.h">
+      <Filter>Neural networks\FNN\Headers</Filter>
+    </ClCompile>
+    <ClCompile Include="MatrixFNN.h">
+      <Filter>Neural networks\FNN\Matrix</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="CudaBackend.cu">
       <Filter>Utils\Cuda</Filter>
     </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Datasets\mnist_train.csv">
+      <Filter>Datasets</Filter>
+    </None>
+    <None Include="Datasets\mnist_test.csv">
+      <Filter>Datasets</Filter>
+    </None>
   </ItemGroup>
 </Project>

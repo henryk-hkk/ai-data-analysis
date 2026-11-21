@@ -1,7 +1,12 @@
 #pragma once
-struct Neuron {
-	double value{1}, bias{};
-	void activate(double input);
+#include "Concepts.h"
 
-	Neuron(double bias = 0) : bias(bias) {};
+template<typename T = double>
+	requires arithmetic<T>
+struct Neuron {
+	T value{1}, bias{};
+ 
+	void activate(T input) { value = input; }
+
+	Neuron(T bias = 0) : bias(bias) {};
 };

@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include "FNN.h"
+#include "ObjectFNN.h"
 
 struct LSTMCache {
 	std::vector<std::vector<double>> combined_history;
@@ -13,7 +13,7 @@ struct LSTMCache {
 };
 
 struct LSTMGate {
-	FNN fnn;
+	ObjectFNN<double> fnn;
 	LSTMGate(size_t inputSize, size_t outputSize, ActivationFunction func) {
 		fnn.addInputLayer(inputSize);
 		fnn.addOutputLayer(outputSize);

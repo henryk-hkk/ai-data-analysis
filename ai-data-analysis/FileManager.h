@@ -1,7 +1,7 @@
 #pragma once
 
 #include "Dataset.h"
-#include "FNN.h"
+#include "ObjectFNN.h"
 #include <conio.h>
 #include <string>
 #include <fstream>
@@ -10,12 +10,6 @@
 #include <ctime>
 #include <iomanip>
 #include <io.h>
-
-
-struct LayerVectors {
-    std::vector<std::vector<double>> weights;
-    std::vector<double> biases;
-};
 
 class FileManager { //deprecated - update fnn saving to include layer-dependent activation function saving
 public:
@@ -69,7 +63,7 @@ public:
 
         for (int y{27}; y >= 0; y--) {
             for (int x{}; x < 28; x++) {
-                unsigned char r, g, b;
+                unsigned char r{}, g{}, b{};
                 file.read(reinterpret_cast<char*>(&b), 1);
                 file.read(reinterpret_cast<char*>(&g), 1);
                 file.read(reinterpret_cast<char*>(&r), 1);
@@ -95,7 +89,7 @@ public:
         }
         file.close();
     }
-    static void saveFNN(const FNN& fnn, std::string savePath) {
+    static void saveObjectFNN(const ObjectFNN<double>& fnn, std::string savePath) {
         std::tm time = getLocalTime();
         size_t layerCount = fnn.layers.size();
         std::ostringstream oss;
@@ -113,8 +107,8 @@ public:
         }
         saveFNNActivationFunctionsToCSV(fnn, savePath);
     }
-    static FNN loadFNN(std::string loadPath) {
-        FNN fnn;
+    static ObjectFNN<double> loadObjectFNN(std::string loadPath) {
+        ObjectFNN<double> fnn;
         //add load path validation
         int fileCount = getFolderFileCount(loadPath);
         
@@ -126,12 +120,12 @@ public:
         inputLayer.close();
 
         fileCount -= 2;//ommiting the input layer file and activation functions files
-        size_t layerCount = (fileCount / 2) + 1;
+        size_t layerCount = static_cast<size_t>(fileCount / 2) + 1;
 
         auto funcs = getActivationFunctions(loadPath + "/functions.csv");
         fnn.setLayerActivationFunction(0, funcs[0]);
         for (size_t i{ 1 }; i < layerCount; i++) {
-            auto lV = getFNNLayerVectors(loadPath + "/layer" + std::to_string(i));
+            auto lV = getObjectFNNLayerVectors(loadPath + "/layer" + std::to_string(i));
             size_t neuronCount = lV.biases.size();
             if (i == layerCount - 1) fnn.addOutputLayer(neuronCount);
             else fnn.addLayer(neuronCount);
@@ -144,27 +138,32 @@ public:
         return fnn;
     }
 private:
-    static void saveFNNLayerToCSV(const std::unique_ptr<FNNLayer>& layer, const std::string& filePath) {
-        LayerVectors lV = getFNNLayerVectors(layer);
+    static void saveFNNLayerToCSV(const std::unique_ptr<FNNLayer<double>>& layer, const std::string& filePath) {
+        LayerVectors lV = layer->getLayerVectors();
         std::ofstream weights(filePath + "_weights.csv"), biases(filePath + "_biases.csv");
         bool firstLineFlag = true;
-        for (size_t neuron{}; neuron < lV.weights.size(); neuron++) {
-            biases << lV.biases[neuron] << ",";
-            if (firstLineFlag) firstLineFlag = false;
-            else weights << "\n";
-            for (size_t previousNeuron{}; previousNeuron < lV.weights[neuron].size(); previousNeuron++)
-                weights << lV.weights[neuron][previousNeuron] << ",";
+        for (size_t neuron = 0; neuron < lV.weights.size(); ++neuron) {
+            if (neuron > 0) {
+                biases << ",";
+                weights << "\n";
+            }
+            biases << lV.biases[neuron];
+
+            for (size_t prev = 0; prev < lV.weights[neuron].size(); ++prev) {
+                if (prev > 0) weights << ",";
+                weights << lV.weights[neuron][prev];
+            }
         }
         weights.close();
         biases.close();
     }
-    static void saveFNNInputLayerToCSV(const std::unique_ptr<FNNLayer>& inputLayer, const std::string& filePath) {
+    static void saveFNNInputLayerToCSV(const std::unique_ptr<FNNLayer<double>>& inputLayer, const std::string& filePath) {
         std::ofstream input(filePath + "_input.csv");
         input << inputLayer->neuronCount;
         input.close();
         return;
     }
-    static void saveFNNActivationFunctionsToCSV(const FNN& fnn, const std::string& savePath) {
+    static void saveFNNActivationFunctionsToCSV(const ObjectFNN<double>& fnn, const std::string& savePath) {
         std::ofstream functions(savePath + "/functions.csv");
         for (size_t layer{}; layer < fnn.layers.size(); layer++) {
             functions << static_cast<int>(fnn.layers[layer]->activationFunc) << ",";
@@ -172,14 +171,7 @@ private:
         functions.close();
     }
 protected:
-    static LayerVectors getFNNLayerVectors(const std::unique_ptr<FNNLayer>& layer) {
-        LayerVectors lV;
-        lV.weights = layer->weights;
-        for (size_t neuron{}; neuron < layer->neuronCount; neuron++)
-            lV.biases.push_back(layer->neurons[neuron]->bias);
-        return lV;
-    }
-    static LayerVectors getFNNLayerVectors(const std::string& filePath) {
+    static LayerVectors<double> getObjectFNNLayerVectors(const std::string& filePath) {
         std::string line, cell;
 
         std::vector<double> biases;

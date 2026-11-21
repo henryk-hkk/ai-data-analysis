@@ -1,9 +1,14 @@
 #include "CudaBackend.hpp"
 #include <cuda_runtime.h>
-#include <algorithm>
+#include <atomic>
+#include <cmath>
 #include <limits>
+#include <mutex>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
+#include <unordered_map>
+#include <vector>
 
 #define CUDA_CHECK(call)                                                      \
     do {                                                                      \
@@ -16,21 +21,99 @@
 
 namespace {
 
-    template <typename T>
-    struct CudaBuffer {
-        T* ptr = nullptr;
+    std::atomic<bool> g_pool_alive{ true };
 
-        explicit CudaBuffer(size_t count) {
-            if (count > 0) {
-                CUDA_CHECK(cudaMalloc(&ptr, count * sizeof(T)));
+    class CudaMemoryPool {
+    private:
+        static constexpr size_t ALIGNMENT = 256;
+        static constexpr size_t MAX_CACHED_BYTES = 512ULL * 1024 * 1024;
+
+        std::mutex mtx_;
+        std::unordered_map<size_t, std::vector<void*>> free_blocks_;
+        std::unordered_map<void*, size_t> active_sizes_;
+        size_t cached_bytes_ = 0;
+
+        static size_t round_up(size_t bytes) noexcept {
+            return (bytes + ALIGNMENT - 1) & ~(ALIGNMENT - 1);
+        }
+
+        void clear_free_locked() noexcept {
+            for (auto& [bucket, ptrs] : free_blocks_) {
+                for (void* ptr : ptrs) {
+                    cudaFree(ptr);
+                }
+            }
+            free_blocks_.clear();
+            cached_bytes_ = 0;
+        }
+
+    public:
+        ~CudaMemoryPool() {
+            g_pool_alive.store(false, std::memory_order_release);
+            clear();
+        }
+
+        void* allocate(size_t bytes) {
+            if (bytes == 0) return nullptr;
+            const size_t bucket = round_up(bytes);
+
+            std::lock_guard<std::mutex> lock(mtx_);
+            auto it = free_blocks_.find(bucket);
+            if (it != free_blocks_.end() && !it->second.empty()) {
+                void* ptr = it->second.back();
+                it->second.pop_back();
+                cached_bytes_ -= bucket;
+                active_sizes_[ptr] = bucket;
+                return ptr;
+            }
+
+            void* ptr = nullptr;
+            cudaError_t err = cudaMalloc(&ptr, bucket);
+            if (err == cudaErrorMemoryAllocation) {
+                cudaGetLastError();
+                clear_free_locked();
+                err = cudaMalloc(&ptr, bucket);
+            }
+            if (err != cudaSuccess) {
+                throw std::runtime_error(std::string("CUDA error: ") + cudaGetErrorString(err));
+            }
+
+            active_sizes_[ptr] = bucket;
+            return ptr;
+        }
+
+        void deallocate(void* ptr) noexcept {
+            if (!ptr) return;
+
+            std::lock_guard<std::mutex> lock(mtx_);
+            auto it = active_sizes_.find(ptr);
+            if (it == active_sizes_.end()) {
+                cudaFree(ptr);
+                return;
+            }
+
+            const size_t bucket = it->second;
+            active_sizes_.erase(it);
+
+            if (cached_bytes_ + bucket <= MAX_CACHED_BYTES) {
+                free_blocks_[bucket].push_back(ptr);
+                cached_bytes_ += bucket;
+            }
+            else {
+                cudaFree(ptr);
             }
         }
-        ~CudaBuffer() {
-            if (ptr) cudaFree(ptr);
+
+        void clear() noexcept {
+            std::lock_guard<std::mutex> lock(mtx_);
+            clear_free_locked();
         }
-        CudaBuffer(const CudaBuffer&) = delete;
-        CudaBuffer& operator=(const CudaBuffer&) = delete;
     };
+
+    CudaMemoryPool& get_memory_pool() {
+        static CudaMemoryPool pool;
+        return pool;
+    }
 
     template <typename T, bool A_RM, bool B_RM, bool C_RM, int TILE>
     __global__ void matmul_tiled_kernel(
@@ -57,7 +140,6 @@ namespace {
                     : T{ 0 };
             }
             else {
-                // zamiana tx/ty wymusza ciagly odczyt po kolumnie w vramie
                 const unsigned int aRowT = blockIdx.y * TILE + tx;
                 const unsigned int aColT = t * TILE + ty;
                 As[tx][ty] = (aRowT < M && aColT < K)
@@ -98,7 +180,7 @@ namespace {
     }
 
     template <typename T, bool A_RM, bool B_RM, bool C_RM, int TILE>
-    void launch_kernel(
+    void launch_matmul(
         dim3 gridDim, dim3 blockDim,
         const T* d_A, unsigned int M, unsigned int K,
         const T* d_B, unsigned int N,
@@ -121,15 +203,190 @@ namespace {
             | static_cast<int>(C_rowMajor);
 
         switch (layoutMask) {
-        case 0b000: launch_kernel<T, false, false, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b001: launch_kernel<T, false, false, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b010: launch_kernel<T, false, true, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b011: launch_kernel<T, false, true, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b100: launch_kernel<T, true, false, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b101: launch_kernel<T, true, false, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b110: launch_kernel<T, true, true, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
-        case 0b111: launch_kernel<T, true, true, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b000: launch_matmul<T, false, false, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b001: launch_matmul<T, false, false, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b010: launch_matmul<T, false, true, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b011: launch_matmul<T, false, true, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b100: launch_matmul<T, true, false, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b101: launch_matmul<T, true, false, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b110: launch_matmul<T, true, true, false, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
+        case 0b111: launch_matmul<T, true, true, true, TILE>(gridDim, blockDim, d_A, M, K, d_B, N, d_C); break;
         }
+    }
+
+    template <typename T>
+    __global__ void sub_kernel(const T* __restrict__ A, const T* __restrict__ B, T* __restrict__ C, size_t n) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i < n) C[i] = A[i] - B[i];
+    }
+
+    template <typename T>
+    __global__ void scale_kernel(const T* __restrict__ A, T scalar, T* __restrict__ C, size_t n) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i < n) C[i] = A[i] * scalar;
+    }
+
+    template <typename T>
+    __global__ void hadamard_kernel(const T* __restrict__ A, const T* __restrict__ B, T* __restrict__ C, size_t n) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i < n) C[i] = A[i] * B[i];
+    }
+
+    template <typename T>
+    __global__ void axpy_sub_inplace_kernel(T* __restrict__ W, const T* __restrict__ dW, T lr, size_t n) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i < n) W[i] -= lr * dW[i];
+    }
+
+    template <typename T>
+    __global__ void add_horizontal_kernel(
+        const T* __restrict__ A, const T* __restrict__ vec, T* __restrict__ C,
+        unsigned int height, unsigned int width, bool rowMajor, T sign
+    ) {
+        const unsigned int col = blockIdx.x * blockDim.x + threadIdx.x;
+        const unsigned int row = blockIdx.y * blockDim.y + threadIdx.y;
+        if (row < height && col < width) {
+            const size_t idx = rowMajor
+                ? (static_cast<size_t>(row) * width + col)
+                : (static_cast<size_t>(col) * height + row);
+            C[idx] = A[idx] + sign * vec[col];
+        }
+    }
+
+    // transpozycja (RowMajor M x N -> N x M)
+    template <typename T, int TILE>
+    __global__ void transpose_tiled_kernel(
+        const T* __restrict__ in, T* __restrict__ out,
+        unsigned int M, unsigned int N
+    ) {
+        __shared__ T tile[TILE][TILE + 1];
+
+        unsigned int col = blockIdx.x * TILE + threadIdx.x;
+        unsigned int row = blockIdx.y * TILE + threadIdx.y;
+
+        if (row < M && col < N) {
+            tile[threadIdx.y][threadIdx.x] = in[static_cast<size_t>(row) * N + col];
+        }
+
+        __syncthreads();
+
+        unsigned int outCol = blockIdx.y * TILE + threadIdx.x;
+        unsigned int outRow = blockIdx.x * TILE + threadIdx.y;
+
+        if (outRow < N && outCol < M) {
+            out[static_cast<size_t>(outRow) * M + outCol] = tile[threadIdx.x][threadIdx.y];
+        }
+    }
+
+    template <typename T>
+    __global__ void activation_kernel(
+        const T* __restrict__ in, T* __restrict__ out, size_t n, cuda_backend::ActivationOp op
+    ) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i >= n) return;
+
+        const T x = in[i];
+        switch (op) {
+        case cuda_backend::ActivationOp::ReLU:
+            out[i] = (x > T{ 0 }) ? x : T{ 0 };
+            break;
+        case cuda_backend::ActivationOp::Sigmoid:
+            if constexpr (std::is_same_v<T, float>)
+                out[i] = 1.0f / (1.0f + expf(-x));
+            else
+                out[i] = static_cast<T>(1.0 / (1.0 + exp(-static_cast<double>(x))));
+            break;
+        case cuda_backend::ActivationOp::Tanh:
+            if constexpr (std::is_same_v<T, float>)
+                out[i] = tanhf(x);
+            else
+                out[i] = static_cast<T>(tanh(static_cast<double>(x)));
+            break;
+        case cuda_backend::ActivationOp::Linear:
+        default:
+            out[i] = x;
+            break;
+        }
+    }
+
+    template <typename T>
+    __global__ void activation_deriv_kernel(
+        const T* __restrict__ a, T* __restrict__ out, size_t n, cuda_backend::ActivationOp op
+    ) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i >= n) return;
+
+        const T val = a[i];
+        switch (op) {
+        case cuda_backend::ActivationOp::ReLU:
+            out[i] = (val > T{ 0 }) ? T{ 1 } : T{ 0 };
+            break;
+        case cuda_backend::ActivationOp::Sigmoid:
+            out[i] = val * (T{ 1 } - val);
+            break;
+        case cuda_backend::ActivationOp::Tanh:
+            out[i] = T{ 1 } - val * val;
+            break;
+        case cuda_backend::ActivationOp::Linear:
+        default:
+            out[i] = T{ 1 };
+            break;
+        }
+    }
+
+    template <typename T>
+    __global__ void softmax_rows_kernel(
+        const T* __restrict__ in, T* __restrict__ out,
+        unsigned int height, unsigned int width, bool rowMajor
+    ) {
+        const unsigned int row = blockIdx.x * blockDim.x + threadIdx.x;
+        if (row >= height || width == 0) return;
+
+        auto idxAt = [&](unsigned int col) -> size_t {
+            return rowMajor
+                ? (static_cast<size_t>(row) * width + col)
+                : (static_cast<size_t>(col) * height + row);
+            };
+
+        double maxVal = static_cast<double>(in[idxAt(0)]);
+        for (unsigned int col = 1; col < width; ++col) {
+            const double v = static_cast<double>(in[idxAt(col)]);
+            if (v > maxVal) maxVal = v;
+        }
+
+        double sumExp = 0.0;
+        for (unsigned int col = 0; col < width; ++col) {
+            const double e = exp(static_cast<double>(in[idxAt(col)]) - maxVal);
+            out[idxAt(col)] = static_cast<T>(e);
+            sumExp += e;
+        }
+
+        const double invSum = 1.0 / sumExp;
+        for (unsigned int col = 0; col < width; ++col) {
+            out[idxAt(col)] = static_cast<T>(static_cast<double>(out[idxAt(col)]) * invSum);
+        }
+    }
+
+    template <typename T>
+    __global__ void mean_columns_kernel(
+        const T* __restrict__ in, T* __restrict__ out,
+        unsigned int height, unsigned int width, bool rowMajor
+    ) {
+        const unsigned int col = blockIdx.x * blockDim.x + threadIdx.x;
+        if (col >= width) return;
+
+        double sum = 0.0;
+        for (unsigned int row = 0; row < height; ++row) {
+            const size_t idx = rowMajor
+                ? (static_cast<size_t>(row) * width + col)
+                : (static_cast<size_t>(col) * height + row);
+            sum += static_cast<double>(in[idx]);
+        }
+        out[col] = static_cast<T>(sum / static_cast<double>(height));
+    }
+
+    inline unsigned int grid1D(size_t count, unsigned int threads = 256) {
+        return static_cast<unsigned int>((count + threads - 1) / threads);
     }
 
 }
@@ -142,17 +399,62 @@ namespace cuda_backend {
         return (err == cudaSuccess && deviceCount > 0);
     }
 
+    void* alloc_device(size_t bytes) {
+        if (bytes == 0) return nullptr;
+        return get_memory_pool().allocate(bytes);
+    }
+
+    void free_device(void* ptr) noexcept {
+        if (!ptr) return;
+        if (g_pool_alive.load(std::memory_order_acquire)) {
+            get_memory_pool().deallocate(ptr);
+        }
+        else {
+            cudaFree(ptr);
+        }
+    }
+
+    void clear_device_pool() noexcept {
+        if (g_pool_alive.load(std::memory_order_acquire)) {
+            get_memory_pool().clear();
+        }
+    }
+
+    void copy_h2d(void* dst_dev, const void* src_host, size_t bytes) {
+        if (bytes > 0) {
+            CUDA_CHECK(cudaMemcpy(dst_dev, src_host, bytes, cudaMemcpyHostToDevice));
+        }
+    }
+
+    void copy_d2h(void* dst_host, const void* src_dev, size_t bytes) {
+        if (bytes > 0) {
+            CUDA_CHECK(cudaMemcpy(dst_host, src_dev, bytes, cudaMemcpyDeviceToHost));
+        }
+    }
+
+    void copy_d2d(void* dst_dev, const void* src_dev, size_t bytes) {
+        if (bytes > 0) {
+            CUDA_CHECK(cudaMemcpy(dst_dev, src_dev, bytes, cudaMemcpyDeviceToDevice));
+        }
+    }
+
+    void memset_device_zero(void* dst_dev, size_t bytes) {
+        if (bytes > 0) {
+            CUDA_CHECK(cudaMemset(dst_dev, 0, bytes));
+        }
+    }
+
     template <typename T>
-    void multiply_matrices(
-        const T* h_A, size_t A_height, size_t K, bool A_rowMajor,
-        const T* h_B, size_t B_width, bool B_rowMajor,
-        T* h_C, bool C_rowMajor
+    void multiply_matrices_device(
+        const T* d_A, size_t A_height, size_t K, bool A_rowMajor,
+        const T* d_B, size_t B_width, bool B_rowMajor,
+        T* d_C, bool C_rowMajor
     ) {
         const size_t sizeC = A_height * B_width;
         if (sizeC == 0) return;
 
         if (K == 0) {
-            std::fill_n(h_C, sizeC, T{ 0 });
+            memset_device_zero(d_C, sizeC * sizeof(T));
             return;
         }
 
@@ -160,16 +462,6 @@ namespace cuda_backend {
         if (A_height > maxDim || K > maxDim || B_width > maxDim) {
             throw std::overflow_error("Matrix dimensions exceed 32-bit CUDA kernel indexing limit");
         }
-
-        const size_t sizeA = A_height * K;
-        const size_t sizeB = K * B_width;
-
-        CudaBuffer<T> d_A(sizeA);
-        CudaBuffer<T> d_B(sizeB);
-        CudaBuffer<T> d_C(sizeC);
-
-        CUDA_CHECK(cudaMemcpy(d_A.ptr, h_A, sizeA * sizeof(T), cudaMemcpyHostToDevice));
-        CUDA_CHECK(cudaMemcpy(d_B.ptr, h_B, sizeB * sizeof(T), cudaMemcpyHostToDevice));
 
         constexpr int TILE = 16;
         dim3 blockDim(TILE, TILE);
@@ -180,17 +472,132 @@ namespace cuda_backend {
 
         dispatch_tiled_matmul<T, TILE>(
             gridDim, blockDim,
-            d_A.ptr, static_cast<unsigned int>(A_height), static_cast<unsigned int>(K), A_rowMajor,
-            d_B.ptr, static_cast<unsigned int>(B_width), B_rowMajor,
-            d_C.ptr, C_rowMajor
+            d_A, static_cast<unsigned int>(A_height), static_cast<unsigned int>(K), A_rowMajor,
+            d_B, static_cast<unsigned int>(B_width), B_rowMajor,
+            d_C, C_rowMajor
         );
-
         CUDA_CHECK(cudaGetLastError());
-        CUDA_CHECK(cudaMemcpy(h_C, d_C.ptr, sizeC * sizeof(T), cudaMemcpyDeviceToHost));
     }
 
-    template void multiply_matrices<float>(const float*, size_t, size_t, bool, const float*, size_t, bool, float*, bool);
-    template void multiply_matrices<double>(const double*, size_t, size_t, bool, const double*, size_t, bool, double*, bool);
-    template void multiply_matrices<int>(const int*, size_t, size_t, bool, const int*, size_t, bool, int*, bool);
+    template <typename T>
+    void sub_device(const T* d_A, const T* d_B, T* d_C, size_t count) {
+        if (count == 0) return;
+        sub_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void scale_device(const T* d_A, T scalar, T* d_C, size_t count) {
+        if (count == 0) return;
+        scale_kernel<T> << <grid1D(count), 256 >> > (d_A, scalar, d_C, count);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void hadamard_device(const T* d_A, const T* d_B, T* d_C, size_t count) {
+        if (count == 0) return;
+        hadamard_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void axpy_sub_inplace_device(T* d_W, const T* d_dW, T lr, size_t count) {
+        if (count == 0) return;
+        axpy_sub_inplace_kernel<T> << <grid1D(count), 256 >> > (d_W, d_dW, lr, count);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void add_horizontal_device(
+        const T* d_A, const T* d_vec, T* d_C,
+        size_t height, size_t width, bool rowMajor, T sign
+    ) {
+        if (height == 0 || width == 0) return;
+        dim3 blockDim(16, 16);
+        dim3 gridDim(
+            static_cast<unsigned int>((width + 15) / 16),
+            static_cast<unsigned int>((height + 15) / 16)
+        );
+        add_horizontal_kernel<T> << <gridDim, blockDim >> > (
+            d_A, d_vec, d_C,
+            static_cast<unsigned int>(height), static_cast<unsigned int>(width),
+            rowMajor, sign
+            );
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void transpose_device(
+        const T* d_in, T* d_out,
+        size_t height, size_t width, bool rowMajor
+    ) {
+        if (height == 0 || width == 0) return;
+        constexpr int TILE = 16;
+        const unsigned int M = static_cast<unsigned int>(rowMajor ? height : width);
+        const unsigned int N = static_cast<unsigned int>(rowMajor ? width : height);
+        dim3 blockDim(TILE, TILE);
+        dim3 gridDim((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
+        transpose_tiled_kernel<T, TILE> << <gridDim, blockDim >> > (d_in, d_out, M, N);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void activation_device(const T* d_in, T* d_out, size_t count, ActivationOp op) {
+        if (count == 0) return;
+        activation_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void activation_deriv_device(const T* d_in, T* d_out, size_t count, ActivationOp op) {
+        if (count == 0) return;
+        activation_deriv_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void softmax_rows_device(
+        const T* d_in, T* d_out,
+        size_t height, size_t width, bool rowMajor
+    ) {
+        if (height == 0 || width == 0) return;
+        softmax_rows_kernel<T> << <grid1D(height, 128), 128 >> > (
+            d_in, d_out,
+            static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
+            );
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+    template <typename T>
+    void mean_columns_device(
+        const T* d_in, T* d_out,
+        size_t height, size_t width, bool rowMajor
+    ) {
+        if (height == 0 || width == 0) return;
+        mean_columns_kernel<T> << <grid1D(width, 128), 128 >> > (
+            d_in, d_out,
+            static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
+            );
+        CUDA_CHECK(cudaGetLastError());
+    }
+
+#define INSTANTIATE_CUDA_OPS(T)                                                                    \
+    template void multiply_matrices_device<T>(const T*, size_t, size_t, bool, const T*, size_t, bool, T*, bool); \
+    template void sub_device<T>(const T*, const T*, T*, size_t);                                   \
+    template void scale_device<T>(const T*, T, T*, size_t);                                        \
+    template void hadamard_device<T>(const T*, const T*, T*, size_t);                              \
+    template void axpy_sub_inplace_device<T>(T*, const T*, T, size_t);                             \
+    template void add_horizontal_device<T>(const T*, const T*, T*, size_t, size_t, bool, T);       \
+    template void transpose_device<T>(const T*, T*, size_t, size_t, bool);                         \
+    template void activation_device<T>(const T*, T*, size_t, ActivationOp);                        \
+    template void activation_deriv_device<T>(const T*, T*, size_t, ActivationOp);                  \
+    template void softmax_rows_device<T>(const T*, T*, size_t, size_t, bool);                      \
+    template void mean_columns_device<T>(const T*, T*, size_t, size_t, bool);
+
+    INSTANTIATE_CUDA_OPS(float)
+        INSTANTIATE_CUDA_OPS(double)
+        INSTANTIATE_CUDA_OPS(int)
+
+#undef INSTANTIATE_CUDA_OPS
 
 }

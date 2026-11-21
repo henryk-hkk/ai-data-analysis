@@ -1,4 +1,4 @@
-#include "FNNTrainingAgent.h"
+#include "MatrixFNNTrainingAgent.h"
 #include "FileManager.h"
 #include "PCAnalyser.h"
 
@@ -9,11 +9,11 @@ static void print(const std::vector<T>& vec) {
 	return;
 }
 
-static void testFnn() {
+static void testObjectFnn() {
 	//auto dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_train.csv");
 	std::vector<double> elo({ 1,2,3 }), elo2({ 2,3,4 });
 	mfuncs::addVectors(elo, elo2);
-	FNN fnn;
+	ObjectFNN fnn;
 
 	//fnn.addInputLayer(784);
 	//fnn.addLayer(16);
@@ -23,7 +23,7 @@ static void testFnn() {
 	//fnn.setOutputLayerActivationFunction(ActivationFunction::SOFTMAX);
 	// 
 	//FileManager::saveLayerToCSV(nn.layers[1], "C:/Users/zimor/Documents/Layer1");
-	fnn = FileManager::loadFNN("C:/Users/zimor/Documents/NN_91.5Acc");
+	fnn = FileManager::loadObjectFNN("C:/Users/zimor/Documents/NN_91.5Acc");
 	//fnn.setActivationFunction(MathFunctions::sigmoid, MathFunctions::dSigmoid);
 	//for (size_t i{}; i < nn.layers.size(); i++) {
 	//	std::cout << nn.layers[i]->neuronCount << "\n";
@@ -35,7 +35,7 @@ static void testFnn() {
 	//FNNTrainingAgent::trainFNN(fnn, dataset, 2, 0.05, true);
 
 	Dataset dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_test.csv");
-	std::cout << "\n" << FNNTrainingAgent::testFNN(fnn, dataset);
+	//std::cout << "\n" << ObjectFNNTrainingAgent::testFNN(fnn, dataset);
 	//std::cout << "\n";
 
 	std::string filePath{ "C:/Users/zimor/Pictures/3.bmp" };
@@ -59,7 +59,7 @@ static void testFnn() {
 	//}
 	//std::cout << "\n\n" << nn.getCost(desiredOut);
 
-	FileManager::saveFNN(fnn, "C:/Users/zimor/Documents");
+	FileManager::saveObjectFNN(fnn, "C:/Users/zimor/Documents");
 }
 
 static void testMatrix() {
@@ -89,6 +89,24 @@ static void testMatrix() {
 	//printVector(dV.superDiagonal);
 }
 
+static void testMatrixFNN() {
+	auto dataset = FileManager::getDatasetFromCSV("Datasets/mnist_train.csv");
+
+	MatrixFNN fnn;
+
+	fnn.addInputLayer(784);
+	fnn.addLayer(16);
+	fnn.addLayer(16);
+	fnn.addOutputLayer(10);
+	fnn.setActivationFunction(ActivationFunction::RELU);
+	fnn.setOutputLayerActivationFunction(ActivationFunction::SOFTMAX);
+
+	MatrixFNNTrainingAgent::trainFNN(fnn, dataset, 3, 0.05, 128);
+
+	dataset = FileManager::getDatasetFromCSV("Datasets/mnist_test.csv");
+	std::cout << "\n" << MatrixFNNTrainingAgent::testFNN(fnn, dataset);
+}
+
 int main() {
-	testMatrix();
+	testMatrixFNN();
 }

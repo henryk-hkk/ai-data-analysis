@@ -120,6 +120,9 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
+    <CudaCompile>
+      <AdditionalOptions>-std=c++20 %(AdditionalOptions)</AdditionalOptions>
+    </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -146,9 +149,11 @@
     <ClInclude Include="Dataset.h" />
     <ClInclude Include="Dimensions.h" />
     <ClInclude Include="FileManager.h" />
-    <ClInclude Include="FNN.h" />
+    <ClInclude Include="MatrixFNNTrainingAgent.h" />
+    <ClInclude Include="ObjectFNN.h" />
     <ClInclude Include="FNNLayers.h" />
-    <ClInclude Include="FNNTrainingAgent.h" />
+    <ClInclude Include="ObjectFNNTrainingAgent.h" />
+    <ClInclude Include="LayerVectors.h" />
     <ClInclude Include="LSTM.h" />
     <ClInclude Include="LSTMCell.h" />
     <ClInclude Include="LSTMLayer.h" />
@@ -159,18 +164,24 @@
     <ClInclude Include="SVDAgent.h" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="FNN.cpp" />
-    <ClCompile Include="FNNLayers.cpp" />
-    <ClCompile Include="FNNTrainingAgent.cpp" />
+    <ClCompile Include="FNNLayersMatrixForms.h" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="MatrixFNN.h" />
     <ClCompile Include="MatrixLayout.h" />
     <ClCompile Include="mfuncs.cpp" />
-    <ClCompile Include="Neuron.cpp" />
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="CudaBackend.cu">
       <FileType>CudaCompile</FileType>
     </CudaCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Datasets\mnist_test.csv">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Datasets\mnist_train.csv">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
