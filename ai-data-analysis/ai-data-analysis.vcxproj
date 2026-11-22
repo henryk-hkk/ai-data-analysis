@@ -143,16 +143,17 @@
     </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClInclude Include="ActivationFunction.h" />
+    <ClInclude Include="AFunc.h" />
     <ClInclude Include="Concepts.h" />
     <ClInclude Include="CudaBackend.hpp" />
     <ClInclude Include="Dataset.h" />
     <ClInclude Include="Dimensions.h" />
     <ClInclude Include="FileManager.h" />
-    <ClInclude Include="MatrixFNNTrainingAgent.h" />
+    <ClInclude Include="FNN.hpp" />
+    <ClInclude Include="MatrixFNNBackpropA.h" />
     <ClInclude Include="ObjectFNN.h" />
     <ClInclude Include="FNNLayers.h" />
-    <ClInclude Include="ObjectFNNTrainingAgent.h" />
+    <ClInclude Include="ObjectFNNBackpropA.h" />
     <ClInclude Include="LayerVectors.h" />
     <ClInclude Include="LSTM.h" />
     <ClInclude Include="LSTMCell.h" />
@@ -172,7 +173,7 @@
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="CudaBackend.cu">
-      <FileType>CudaCompile</FileType>
+      <FileType>CppCode</FileType>
     </CudaCompile>
   </ItemGroup>
   <ItemGroup>

@@ -9,7 +9,7 @@
 #include "Concepts.h"
 #include "Neuron.h"
 #include "mfuncs.h"
-#include "ActivationFunction.h"
+#include "AFunc.h"
 #include "FNNLayersMatrixForms.h"
 #include "LayerVectors.h"
 
@@ -23,15 +23,15 @@ public:
     std::vector<std::vector<T>> weights; // weights[i][j] -> i: neuron bieżącej warstwy, j: neuron poprzedniej
     std::vector<std::unique_ptr<Neuron<T>>> neurons;
     std::vector<T> activations;
-    ActivationFunction activationFunc = ActivationFunction::LINEAR;
+    AFunc activationFunc = AFunc::LINEAR;
 
     FNNLayer() = default;
 
-    FNNLayer(size_t neuronCount, ActivationFunction func = ActivationFunction::LINEAR)
+    FNNLayer(size_t neuronCount, AFunc func = AFunc::LINEAR)
         : neuronCount(neuronCount), activations(neuronCount), activationFunc(func) {
     }
 
-    FNNLayer(size_t neuronCount, FNNLayer* prev, ActivationFunction func = ActivationFunction::LINEAR)
+    FNNLayer(size_t neuronCount, FNNLayer* prev, AFunc func = AFunc::LINEAR)
         : previous(prev), neuronCount(neuronCount), activations(neuronCount), activationFunc(func) {
         init();
     }
@@ -103,7 +103,7 @@ public:
 template<typename T = double>
     requires arithmetic<T>
 struct FNNInputLayer : FNNLayer<T> {
-    FNNInputLayer(size_t neuronCount, ActivationFunction func = ActivationFunction::LINEAR)
+    FNNInputLayer(size_t neuronCount, AFunc func = AFunc::LINEAR)
         : FNNLayer<T>(neuronCount, func) {
         this->neurons.reserve(neuronCount);
         for (size_t i = 0; i < neuronCount; ++i) {

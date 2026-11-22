@@ -443,6 +443,12 @@ namespace cuda_backend {
             CUDA_CHECK(cudaMemset(dst_dev, 0, bytes));
         }
     }
+    template <typename T>
+    void memset_device_fill(void* dst_dev, size_t bytes, T val) {
+        if (bytes > 0) {
+            CUDA_CHECK(cudaMemset(dst_dev, val, bytes));
+        }
+    }
 
     template <typename T>
     void multiply_matrices_device(

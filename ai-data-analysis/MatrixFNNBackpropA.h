@@ -13,7 +13,7 @@
 #include "Dataset.h"
 #include "mfuncs.h"
 
-class MatrixFNNTrainingAgent {
+class MatrixFNNBackpropA {
 public:
     template<typename T, MatrixLayout L, typename DatasetT>
         requires arithmetic<T>
@@ -178,15 +178,15 @@ protected:
             Matrix<T, L> current = (activations.back() * layer.weights.transposed())
                 .add_horizontal(layer.biases);
 
-            if (layer.func == ActivationFunction::SOFTMAX) {
+            if (layer.activationFunc == AFunc::SOFTMAX) {
                 current = current.softmax_rows();
             }
-            else if (layer.func != ActivationFunction::LINEAR) {
-                if (auto gpuOp = toCudaActivation(layer.func)) {
+            else if (layer.activationFunc != AFunc::LINEAR) {
+                if (auto gpuOp = toCudaActivation(layer.activationFunc)) {
                     current = current.apply_activation(*gpuOp);
                 }
                 else {
-                    current = current.apply(getActivationFunction(layer.func));
+                    current = current.apply(getActivationFunction(layer.activationFunc));
                 }
             }
 
@@ -211,10 +211,10 @@ protected:
         // softmax + cross-entropy -> (A - Y)
         // other -> 2 * (A - Y) * f'(A)
         Matrix<T, L> delta = activations.back() - targetBatch;
-        const ActivationFunction outFunc = fnn.layers.back().func;
+        const AFunc outFunc = fnn.layers.back().activationFunc;
 
-        if (outFunc != ActivationFunction::SOFTMAX) {
-            if (outFunc != ActivationFunction::LINEAR) {
+        if (outFunc != AFunc::SOFTMAX) {
+            if (outFunc != AFunc::LINEAR) {
                 if (auto gpuOp = toCudaActivation(outFunc)) {
                     delta = delta.hadamard(activations.back().apply_activation_derivative(*gpuOp));
                 }
@@ -235,8 +235,8 @@ protected:
             Matrix<T, L> nextDelta;
             if (l > 0) {
                 nextDelta = delta * layer.weights;
-                const ActivationFunction prevFunc = fnn.layers[l - 1].func;
-                if (prevFunc != ActivationFunction::LINEAR) {
+                const AFunc prevFunc = fnn.layers[l - 1].activationFunc;
+                if (prevFunc != AFunc::LINEAR) {
                     if (auto gpuOp = toCudaActivation(prevFunc)) {
                         nextDelta = nextDelta.hadamard(prevAct.apply_activation_derivative(*gpuOp));
                     }

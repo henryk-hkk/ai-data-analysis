@@ -13,30 +13,32 @@
 
 class FileManager { //deprecated - update fnn saving to include layer-dependent activation function saving
 public:
-    static Dataset getDatasetFromCSV(const std::string& filePath) {
-        Dataset dataset;
+    template<arithmetic T>
+    static Dataset<T> getDatasetFromCSV(const std::string& filePath) {
+        Dataset<T> dataset;
         //std::vector<std::vector<double>> inputVec, outputVec;
         std::ifstream file(filePath);
         if (!file.good()) {
             std::cout << "Provided CSV file is incorrect.\n";
-            return Dataset{ {}, {} };
+            return Dataset<T>{ {}, {} };
         }
 
         std::string line;
         std::getline(file, line);//skipping the header
 
         while (std::getline(file, line)) {
-            std::vector<double> row;
+            std::vector<T> row;
             std::stringstream ss(line);
             std::string cell;
             unsigned i{};
             while (std::getline(ss, cell, ',')) {
                 if (i == 0) {
-                    dataset.desiredOutputVector.push_back(mfuncs::convertDigitToOutputVector(std::stoi(cell)));
+                    dataset.desiredOutputVector.push_back(mfuncs::convertDigitToOutputVector<T>(std::stoi(cell)));
                     i++;
                     continue;
                 }
-                row.push_back(std::stod(cell) / 255.0);
+                if(std::is_same<T, float>::value) row.push_back(std::stof(cell) / 255.0f);
+                else row.push_back(std::stod(cell) / 255.0);
             }
             dataset.inputVector.push_back(row);
         }
@@ -78,7 +80,8 @@ public:
         }
         return inputVec;
     }
-    static void SaveDatasetToCSV(const Dataset &dataset, const std::string& filePath) {
+    template<arithmetic T>
+    static void SaveDatasetToCSV(const Dataset<T> &dataset, const std::string& filePath) {
         std::ofstream file(filePath);
         for (size_t i{}; i < dataset.inputVector.size(); i++) {
             file << mfuncs::convertOutputVectorToDigit(dataset.desiredOutputVector[i]) << ",";
@@ -202,14 +205,14 @@ protected:
 
     }
 
-    static std::vector<ActivationFunction> getActivationFunctions(const std::string& filePath) {
+    static std::vector<AFunc> getActivationFunctions(const std::string& filePath) {
         std::ifstream activationFunctionsFile(filePath);
         std::string line, cell;
-        std::vector<ActivationFunction> activationFunctions;
+        std::vector<AFunc> activationFunctions;
         while (std::getline(activationFunctionsFile, line)) { //file should only contain one line anyway
             std::stringstream ss(line);
             while (std::getline(ss, cell, ','))
-                activationFunctions.push_back(static_cast<ActivationFunction>(std::stoi(cell)));
+                activationFunctions.push_back(static_cast<AFunc>(std::stoi(cell)));
         }
         return activationFunctions;
     }

@@ -19,6 +19,8 @@ namespace cuda_backend {
     void copy_d2h(void* dst_host, const void* src_dev, size_t bytes);
     void copy_d2d(void* dst_dev, const void* src_dev, size_t bytes);
     void memset_device_zero(void* dst_dev, size_t bytes);
+    template <typename T>
+    void memset_device_fill(void* dst_dev, size_t bytes, T val);
 
     template <typename T>
     class DeviceBuffer {

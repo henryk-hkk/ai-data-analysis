@@ -1,4 +1,4 @@
-#include "MatrixFNNTrainingAgent.h"
+#include "MatrixFNNBackpropA.h"
 #include "FileManager.h"
 #include "PCAnalyser.h"
 
@@ -13,7 +13,7 @@ static void testObjectFnn() {
 	//auto dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_train.csv");
 	std::vector<double> elo({ 1,2,3 }), elo2({ 2,3,4 });
 	mfuncs::addVectors(elo, elo2);
-	ObjectFNN fnn;
+	ObjectFNN<double> fnn;
 
 	//fnn.addInputLayer(784);
 	//fnn.addLayer(16);
@@ -34,12 +34,12 @@ static void testObjectFnn() {
 
 	//FNNTrainingAgent::trainFNN(fnn, dataset, 2, 0.05, true);
 
-	Dataset dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_test.csv");
+	//Dataset dataset = FileManager::getDatasetFromCSV("C:/Users/zimor/Documents/neural networks/mnist_test.csv");
 	//std::cout << "\n" << ObjectFNNTrainingAgent::testFNN(fnn, dataset);
 	//std::cout << "\n";
 
 	std::string filePath{ "C:/Users/zimor/Pictures/3.bmp" };
-	fnn.process(FileManager::getInputVectorFrom28x28BMP(filePath));
+	fnn.forward(FileManager::getInputVectorFrom28x28BMP(filePath));
 	std::vector<double> outputArr = fnn.getOutput();
 	//for (int i = 0; i < 10; i++) {
 	//	std::cout << outputArr[i] << "\n";
@@ -81,7 +81,7 @@ static void testMatrix() {
 	std::cout << ((bidiagonal.U1 * bidiagonal.B) * bidiagonal.V1_T);
 	std::cout << "\n";
 	std::cout << dataMatrix;
-	dataMatrix.clear();
+	dataMatrix.fill();
 	std::cout << "\n";
 	std::cout << dataMatrix;
 	//auto dV = SVDAgent::getBidiagonalVectors(bidiagonal);
@@ -90,21 +90,21 @@ static void testMatrix() {
 }
 
 static void testMatrixFNN() {
-	auto dataset = FileManager::getDatasetFromCSV("Datasets/mnist_train.csv");
+	auto dataset = FileManager::getDatasetFromCSV<float>("Datasets/mnist_train.csv");
 
-	MatrixFNN fnn;
+	MatrixFNN<float> fnn;
 
 	fnn.addInputLayer(784);
 	fnn.addLayer(16);
 	fnn.addLayer(16);
 	fnn.addOutputLayer(10);
-	fnn.setActivationFunction(ActivationFunction::RELU);
-	fnn.setOutputLayerActivationFunction(ActivationFunction::SOFTMAX);
+	fnn.setActivationFunction(AFunc::RELU);
+	fnn.setOutputLayerActivationFunction(AFunc::SOFTMAX);
 
-	MatrixFNNTrainingAgent::trainFNN(fnn, dataset, 3, 0.05, 128);
+	MatrixFNNBackpropA::trainFNN(fnn, dataset, 3, 0.05, 128);
 
-	dataset = FileManager::getDatasetFromCSV("Datasets/mnist_test.csv");
-	std::cout << "\n" << MatrixFNNTrainingAgent::testFNN(fnn, dataset);
+	dataset = FileManager::getDatasetFromCSV<float>("Datasets/mnist_test.csv");
+	std::cout << "\n" << MatrixFNNBackpropA::testFNN(fnn, dataset);
 }
 
 int main() {

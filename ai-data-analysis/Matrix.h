@@ -26,12 +26,21 @@ private:
     size_t width = 0, height = 0;
     mutable std::vector<T> data;
     mutable cuda_backend::DeviceBuffer<T> d_buf;
+
     mutable bool hostDirty = false;   // VRAM ma nowsze dane niż RAM
     mutable bool deviceDirty = true;  // RAM ma nowsze dane niż VRAM
 
     static constexpr size_t DEFAULT_PRINT_PRECISION = 6;
+
     static constexpr bool supports_gpu =
         std::is_same_v<T, float> || std::is_same_v<T, double> || std::is_same_v<T, int>;
+
+    constexpr size_t index(size_t x, size_t y) const {
+        if constexpr (L == MatrixLayout::RowMajor)
+            return y * width + x;
+        else
+            return x * height + y;
+    }
 
     template<typename U, MatrixLayout L2>
         requires arithmetic<U>
@@ -44,19 +53,7 @@ private:
         }
         return false;
     }
-
-    constexpr size_t index(size_t x, size_t y) const {
-        if constexpr (L == MatrixLayout::RowMajor)
-            return y * width + x;
-        else
-            return x * height + y;
-    }
-
-    [[nodiscard]] size_t elementCount() const noexcept {
-        return width * height;
-    }
-
-    static Matrix<T, L> createOnDevice(size_t rows, size_t cols) {
+    static Matrix<T, L> createOnDevice(size_t rows, size_t cols) { // Allocates new Matrix on the GPU
         Matrix<T, L> m;
         m.height = rows;
         m.width = cols;
@@ -68,20 +65,18 @@ private:
         }
         return m;
     }
-
 public:
-    Matrix() = default;
+    // constructors, deconstructors, = operator
 
+    Matrix() = default;
     Matrix(size_t rows, size_t cols)
         : width(cols), height(rows), data(width* height, T{}) {
     }
-
     Matrix(size_t rows, size_t cols, std::vector<T> content)
         : width(cols), height(rows), data(std::move(content)) {
         if (data.size() != width * height)
             throw std::invalid_argument("Vector size does not match matrix dimensions.");
     }
-
     Matrix(const std::vector<std::vector<T>>& content) {
         if (content.empty()) {
             width = 0;
@@ -105,7 +100,6 @@ public:
             }
         }
     }
-
     Matrix(const Matrix& other)
         : width(other.width), height(other.height) {
         const size_t n = elementCount();
@@ -125,7 +119,6 @@ public:
         hostDirty = false;
         deviceDirty = true;
     }
-
     Matrix& operator=(const Matrix& other) {
         if (this == &other) return *this;
 
@@ -160,13 +153,12 @@ public:
     Matrix& operator=(Matrix&&) noexcept = default;
     ~Matrix() = default;
 
+    // GPU interactions
     [[nodiscard]] bool isDeviceValid() const noexcept {
         return d_buf.allocated() && !deviceDirty;
     }
-
     [[nodiscard]] bool isHostDirty() const noexcept { return hostDirty; }
     [[nodiscard]] bool isDeviceDirty() const noexcept { return deviceDirty; }
-
     void syncToDevice() const {
         if constexpr (!supports_gpu) return;
         const size_t n = elementCount();
@@ -179,7 +171,6 @@ public:
         cuda_backend::copy_h2d(d_buf.get(), data.data(), n * sizeof(T));
         deviceDirty = false;
     }
-
     void syncToHost() const {
         if (!hostDirty) return;
         const size_t n = elementCount();
@@ -191,21 +182,18 @@ public:
         }
         hostDirty = false;
     }
-
     void toDevice() const {
         if (gpuAvailable()) syncToDevice();
     }
-
     void toHost() const {
         syncToHost();
     }
-
     void releaseDevice() {
         syncToHost();
         d_buf.release();
         deviceDirty = true;
     }
-
+    // operations
     [[nodiscard]] Matrix<T, L> add_horizontal(const Matrix<T, L>& rowVec) const {
         if (rowVec.height != 1 || rowVec.width != width) {
             throw std::invalid_argument("Bias matrix must have dimensions 1 x matrix_width.");
@@ -595,6 +583,11 @@ public:
         return os;
     }
 
+    // simple functions
+    [[nodiscard]] size_t elementCount() const noexcept {
+        return width * height;
+    }
+
     [[nodiscard]] static Matrix<T, L> identity(size_t n) {
         Matrix<T, L> m(n, n);
         constexpr T one = static_cast<T>(1);
@@ -604,16 +597,16 @@ public:
         return m;
     }
 
-    void clear() {
+    void fill(T val = T{0}) {
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
-                cuda_backend::memset_device_zero(d_buf.get(), elementCount() * sizeof(T));
+                cuda_backend::memset_device_fill(d_buf.get(), elementCount() * sizeof(T), val);
                 hostDirty = true;
                 deviceDirty = false;
                 return;
             }
         }
-        std::fill(data.begin(), data.end(), T{ 0 });
+        std::fill(data.begin(), data.end(), val);
         hostDirty = false;
         deviceDirty = true;
     }
@@ -664,11 +657,9 @@ public:
         hostDirty = false;
         deviceDirty = true;
     }
-
     [[nodiscard]] Dimensions getDimensions() const { return { width, height }; }
     [[nodiscard]] size_t getWidth() const { return width; }
     [[nodiscard]] size_t getHeight() const { return height; }
-
     [[nodiscard]] T getValue(size_t x, size_t y) const {
         syncToHost();
         return data[index(x, y)];
@@ -681,10 +672,9 @@ public:
     }
 
     [[nodiscard]] Matrix<T, L> mean_columns_matrix() const {
-        if (height == 0 || width == 0) {
+        if (height == 0 || width == 0)
             return Matrix<T, L>(1, width);
-        }
-
+        
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(1, width);

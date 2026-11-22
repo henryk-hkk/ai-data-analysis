@@ -7,7 +7,7 @@
 #include "ObjectFNN.h"
 #include "Dataset.h"
 
-class ObjectFNNTrainingAgent {
+class ObjectFNNBackpropA {
 public:
     template<typename T, typename DatasetT>
         requires arithmetic<T>
@@ -30,7 +30,7 @@ public:
 
                 for (size_t i = 0; i < inputsPerIteration; ++i) {
                     const size_t sampleIdx = iteration * inputsPerIteration + i;
-                    fnn.process(trainingDataset.inputVector[sampleIdx]);
+                    fnn.forward(trainingDataset.inputVector[sampleIdx]);
                     errorsArr[i] = getNeuronErrors(fnn, trainingDataset.desiredOutputVector[sampleIdx]);
                 }
 
@@ -55,7 +55,7 @@ public:
 
         size_t correct = 0;
         for (size_t i = 0; i < testDataset.inputVector.size(); ++i) {
-            fnn.process(testDataset.inputVector[i]);
+            fnn.forward(testDataset.inputVector[i]);
             if (mfuncs::convertOutputVectorToDigit(fnn.getOutput()) ==
                 mfuncs::convertOutputVectorToDigit(testDataset.desiredOutputVector[i])) {
                 ++correct;

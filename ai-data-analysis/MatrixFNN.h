@@ -10,26 +10,21 @@
 #include "CudaBackend.hpp"
 #include "FNNLayersMatrixForms.h"
 #include "mfuncs.h"
+#include "FNN.hpp"
 
-enum class WeightInit {
-    Xavier,  // Sigmoid, Tanh, Linear, Softmax
-    He,      // ReLU, LeakyReLU
-    Uniform
-};
-
-inline std::optional<cuda_backend::ActivationOp> toCudaActivation(ActivationFunction func) {
+inline std::optional<cuda_backend::ActivationOp> toCudaActivation(AFunc func) {
     switch (func) {
-    case ActivationFunction::LINEAR:  return cuda_backend::ActivationOp::Linear;
-    case ActivationFunction::RELU:    return cuda_backend::ActivationOp::ReLU;
-    case ActivationFunction::SIGMOID: return cuda_backend::ActivationOp::Sigmoid;
-    case ActivationFunction::TANH:    return cuda_backend::ActivationOp::Tanh;
+    case AFunc::LINEAR:  return cuda_backend::ActivationOp::Linear;
+    case AFunc::RELU:    return cuda_backend::ActivationOp::ReLU;
+    case AFunc::SIGMOID: return cuda_backend::ActivationOp::Sigmoid;
+    case AFunc::TANH:    return cuda_backend::ActivationOp::Tanh;
     default:                          return std::nullopt;
     }
 }
 
 template<typename T = double, MatrixLayout L = MatrixLayout::RowMajor>
     requires arithmetic<T>
-class MatrixFNN {
+class MatrixFNN : public FNN<T> { // Linear-based Feedforward Neural Network
 private:
     static std::vector<T> generateWeights(size_t fanIn, size_t fanOut, WeightInit init) {
         thread_local std::mt19937 gen(std::random_device{}());
@@ -60,6 +55,7 @@ public:
     FNNInputLayerMatrixForm<T> inputLayer;
     std::vector<FNNWeightedLayerMatrixForm<T, L>> layers; // hidden + output
 
+    // CUDA helpers
     void toDevice() const {
         for (const auto& layer : layers) {
             layer.weights.toDevice();
@@ -74,18 +70,35 @@ public:
         }
     }
 
-    void addInputLayer(size_t layerSize, ActivationFunction func = ActivationFunction::LINEAR) {
+    void setActivationFunction(AFunc func) {
+        for (size_t i = 0; i + 1 < layers.size(); ++i) {
+            layers[i].activationFunc = func;
+        }
+    }
+
+    void setLayerActivationFunction(size_t layerIndex, AFunc func) {
+        layers.at(layerIndex).activationFunc = func;
+    }
+
+    void setOutputLayerActivationFunction(AFunc func) {
+        if (layers.empty()) {
+            throw std::logic_error("Cannot set output activation: network has no weighted layers.");
+        }
+        layers.back().activationFunc = func;
+    }
+
+    void addInputLayer(size_t layerSize, AFunc func = AFunc::LINEAR) {
         if (layerSize == 0) {
             throw std::invalid_argument("Input layer size must be greater than 0.");
         }
         layers.clear();
-        inputLayer.func = func;
+        inputLayer.activationFunc = func;
         inputLayer.biases.assign(layerSize, T{ 0 });
     }
 
     void addLayer(
         size_t layerSize,
-        ActivationFunction func = ActivationFunction::LINEAR,
+        AFunc func = AFunc::LINEAR,
         WeightInit init = WeightInit::Xavier
     ) {
         if (inputLayer.biases.empty()) {
@@ -111,27 +124,19 @@ public:
 
     void addOutputLayer(
         size_t layerSize,
-        ActivationFunction func = ActivationFunction::SOFTMAX,
+        AFunc func = AFunc::SOFTMAX,
         WeightInit init = WeightInit::Xavier
     ) {
         addLayer(layerSize, func, init);
     }
 
-    void setActivationFunction(ActivationFunction func) {
-        for (size_t i = 0; i + 1 < layers.size(); ++i) {
-            layers[i].func = func;
+    [[nodiscard]] std::vector<T> forward(const std::vector<T>& input) {
+        if (input.size() != inputLayer.biases.size()) {
+            throw std::invalid_argument("Input size does not match input layer neuron count.");
         }
-    }
 
-    void setLayerActivationFunction(size_t layerIndex, ActivationFunction func) {
-        layers.at(layerIndex).func = func;
-    }
-
-    void setOutputLayerActivationFunction(ActivationFunction func) {
-        if (layers.empty()) {
-            throw std::logic_error("Cannot set output activation: network has no weighted layers.");
-        }
-        layers.back().func = func;
+        Matrix<T, L> inputMatrix(1, input.size(), input);
+        return forward(inputMatrix).getContent();
     }
 
     [[nodiscard]] Matrix<T, L> forward(const Matrix<T, L>& input) const {
@@ -145,28 +150,19 @@ public:
             // current: (B x N_in), weights^T: (N_in x N_out) -> wynik: (B x N_out)
             current = (current * layer.weights.transposed()).add_horizontal(layer.biases);
 
-            if (layer.func == ActivationFunction::SOFTMAX) {
+            if (layer.activationFunc == AFunc::SOFTMAX) {
                 current = current.softmax_rows();
             }
-            else if (layer.func != ActivationFunction::LINEAR) {
-                if (auto gpuOp = toCudaActivation(layer.func)) {
+            else if (layer.activationFunc != AFunc::LINEAR) {
+                if (auto gpuOp = toCudaActivation(layer.activationFunc)) {
                     current = current.apply_activation(*gpuOp);
                 }
                 else {
-                    current = current.apply(getActivationFunction(layer.func));
+                    current = current.apply(getActivationFunction(layer.activationFunc));
                 }
             }
         }
 
         return current;
-    }
-
-    [[nodiscard]] std::vector<T> forward(const std::vector<T>& input) const {
-        if (input.size() != inputLayer.biases.size()) {
-            throw std::invalid_argument("Input size does not match input layer neuron count.");
-        }
-
-        Matrix<T, L> inputMatrix(1, input.size(), input);
-        return forward(inputMatrix).getContent();
     }
 };

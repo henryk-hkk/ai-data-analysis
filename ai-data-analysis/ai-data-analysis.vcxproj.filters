@@ -88,7 +88,7 @@
     <ClInclude Include="Dimensions.h">
       <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="ActivationFunction.h">
+    <ClInclude Include="AFunc.h">
       <Filter>Utils\Math</Filter>
     </ClInclude>
     <ClInclude Include="CudaBackend.hpp">
@@ -97,14 +97,17 @@
     <ClInclude Include="LayerVectors.h">
       <Filter>Neural networks\FNN\Headers</Filter>
     </ClInclude>
-    <ClInclude Include="MatrixFNNTrainingAgent.h">
+    <ClInclude Include="MatrixFNNBackpropA.h">
       <Filter>Neural networks\FNN\Matrix</Filter>
     </ClInclude>
     <ClInclude Include="ObjectFNN.h">
       <Filter>Neural networks\FNN\Object</Filter>
     </ClInclude>
-    <ClInclude Include="ObjectFNNTrainingAgent.h">
+    <ClInclude Include="ObjectFNNBackpropA.h">
       <Filter>Neural networks\FNN\Object</Filter>
+    </ClInclude>
+    <ClInclude Include="FNN.hpp">
+      <Filter>Neural networks\FNN\Headers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>

@@ -2,7 +2,7 @@
 #include "LSTMCell.h"
 class LSTM { //Long short-term memory Neural Network
 	std::vector<std::unique_ptr<LSTMCell>> cells;
-	std::unique_ptr<FNN> classificationLayer;
+	std::unique_ptr<ObjectFNN<float>> classificationLayer;
 
 	void addCell(size_t hiddenDim, size_t inputDim = 0) {
 		if (cells.empty()) {
@@ -15,7 +15,7 @@ class LSTM { //Long short-term memory Neural Network
 	}
 
 	void addClassificationLayer(size_t inputDim, size_t outputDim) {
-		classificationLayer = std::make_unique<FNN>();
+		classificationLayer = std::make_unique<ObjectFNN<float>>();
 		classificationLayer->addInputLayer(inputDim);
 		classificationLayer->addOutputLayer(outputDim);
 	}

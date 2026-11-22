@@ -14,14 +14,14 @@ struct LSTMCache {
 
 struct LSTMGate {
 	ObjectFNN<double> fnn;
-	LSTMGate(size_t inputSize, size_t outputSize, ActivationFunction func) {
+	LSTMGate(size_t inputSize, size_t outputSize, AFunc func) {
 		fnn.addInputLayer(inputSize);
 		fnn.addOutputLayer(outputSize);
 		fnn.setActivationFunction(func);
 	};
 	
 	std::vector<double> process(const std::vector<double>& input) {
-		fnn.process(input);
+		fnn.forward(input);
 		return fnn.getOutput();
 	}
 	virtual ~LSTMGate() = default;
@@ -29,10 +29,10 @@ struct LSTMGate {
 
 struct LSTMCell {
 	LSTMCell(size_t inputDim, size_t hiddenDim) :
-		fg(hiddenDim + inputDim, hiddenDim, ActivationFunction::SIGMOID),
-		ig(hiddenDim + inputDim, hiddenDim, ActivationFunction::SIGMOID),
-		og(hiddenDim + inputDim, hiddenDim, ActivationFunction::SIGMOID),
-		c(hiddenDim + inputDim, hiddenDim, ActivationFunction::TANH)
+		fg(hiddenDim + inputDim, hiddenDim, AFunc::SIGMOID),
+		ig(hiddenDim + inputDim, hiddenDim, AFunc::SIGMOID),
+		og(hiddenDim + inputDim, hiddenDim, AFunc::SIGMOID),
+		c(hiddenDim + inputDim, hiddenDim, AFunc::TANH)
 	{ 
 		cellState = std::vector<double>(hiddenDim, 0.0);
 		hiddenState = std::vector<double>(hiddenDim, 0.0);
