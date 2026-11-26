@@ -51,13 +51,13 @@ public:
 
 		dimensionShifts = getDimensionShifts(dimensionSizes);
 	}
-
-	template<arithmetic U, MatrixLayout L>
-	Tensor<U, 2> fromMatrix(Matrix <U, L> m) {
-		if (L != MatrixLayout::RowMajor) throw new std::invalid_argument("");
-		return Tensor({ m.getWidth(), m.getHeight() }, m.getContent());
+	template<MatrixLayout L>
+	Tensor(Matrix <T, L> m) {
+		if (L == MatrixLayout::ColumnMajor) m = m.transposed();
+	
+		dimensionSizes = { m.getWidth(), m.getHeight() };
+		data = m.getContent();
 	}
-
 	constexpr size_t elemIndex(std::initializer_list<size_t> indices) const { // for individual elements
 		if (indices.size() != Dimension) throw new std::invalid_argument("");
 		return index(indices);
@@ -65,6 +65,9 @@ public:
 	constexpr size_t blockIndex(std::initializer_list<size_t> indices) const { // for memory blocks
 		if (indices.size() >= Dimension) throw new std::invalid_argument("");
 		return index(indices);
+	}
+	std::vector<T> getContent() const {
+		return std::vector<T>(data);
 	}
 	size_t size() const {
 		size_t size{ 1 };

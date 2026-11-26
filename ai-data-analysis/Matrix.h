@@ -629,7 +629,7 @@ public:
         std::cout << toString(precision);
     }
 
-    void fillWithRandomIntegers(int a, int b) {
+    void fillRandom(int a, int b) {
         static std::random_device rd;
         thread_local std::mt19937 gen(rd());
         data.resize(elementCount());

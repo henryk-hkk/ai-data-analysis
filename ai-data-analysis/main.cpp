@@ -66,7 +66,7 @@ static void testObjectFnn() {
 static void testMatrix() {
 	Matrix dataMatrix(3, 3);
 	//dataMatrix.setContent({ {1,1,1}, {1, 2,1}, {1,1,2} });
-	dataMatrix.fillWithRandomIntegers(1, 10);
+	dataMatrix.fillRandom(1, 10);
 	std::cout << dataMatrix;
 	dataMatrix = mfuncs::getMeanCenteredMatrix(dataMatrix);
 	std::cout << dataMatrix;
@@ -108,13 +108,13 @@ static void testMatrixFNN() {
 	std::cout << "\n" << MatrixFNNBackpropA::testFNN(fnn, dataset);
 }
 static void testTensor() {
-	Tensor<float, 3> t1({ 2,2,2 });
-	//for (size_t i{}; i < t1.dimension(); i++) {
-	//	for (size_t j{}; j < t1.dimensionShifts[i].size(); j++) {
-	//		std::cout << t1.dimensionShifts[i][j] << "\t";
-	//	}
-	//	std::cout << "\n";
-	//}
+	auto m = Matrix<float, MatrixLayout::ColumnMajor>(5, 6);
+	m.fillRandom(0, 20);
+	auto t1 = Tensor<float, 2>(m);
+	m.print();
+	std::cout << "\n\n";
+	print(t1.getContent());
+
 }
 
 int main() {
