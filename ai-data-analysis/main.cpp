@@ -1,6 +1,7 @@
 #include "MatrixFNNBackpropA.h"
 #include "FileManager.h"
 #include "PCAnalyser.h"
+#include "Tensor.hpp"
 
 template<typename T>
 static void print(const std::vector<T>& vec) {
@@ -106,7 +107,16 @@ static void testMatrixFNN() {
 	dataset = FileManager::getDatasetFromCSV<float>("Datasets/mnist_test.csv");
 	std::cout << "\n" << MatrixFNNBackpropA::testFNN(fnn, dataset);
 }
+static void testTensor() {
+	Tensor<float, 3> t1({ 2,2,2 });
+	//for (size_t i{}; i < t1.dimension(); i++) {
+	//	for (size_t j{}; j < t1.dimensionShifts[i].size(); j++) {
+	//		std::cout << t1.dimensionShifts[i][j] << "\t";
+	//	}
+	//	std::cout << "\n";
+	//}
+}
 
 int main() {
-	testMatrixFNN();
+	testTensor();
 }

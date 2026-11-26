@@ -76,13 +76,31 @@ protected:
         std::vector<std::vector<T>> errorsMean(fnn.layers.size());
         for (size_t layer = 1; layer < fnn.layers.size(); ++layer) {
             errorsMean[layer].resize(fnn.layers[layer]->neuronCount, T{ 0 });
-            for (size_t neuron = 0; neuron < fnn.layers[layer]->neuronCount; ++neuron) {
-                for (size_t i = 0; i < inputsPerIteration; ++i) {
-                    errorsMean[layer][neuron] += errorsArr[i][layer][neuron];
-                }
-                errorsMean[layer][neuron] /= static_cast<T>(inputsPerIteration);
-            }
         }
+
+        std::for_each(std::execution::par, errorsMean.begin() + 1, errorsMean.end(), [&](auto& layerMean) {
+            const size_t layer = static_cast<size_t>(&layerMean - errorsMean.data());
+            const size_t neuronCount = fnn.layers[layer]->neuronCount;
+
+            for (size_t i = 0; i < inputsPerIteration; ++i) {
+                const auto& errLayer = errorsArr[i][layer];
+                for (size_t neuron = 0; neuron < neuronCount; ++neuron) {
+                    layerMean[neuron] += errLayer[neuron];
+                }
+            }
+
+            if constexpr (std::is_floating_point_v<T>) {
+                const T invInputs = T{ 1 } / static_cast<T>(inputsPerIteration);
+                for (size_t neuron = 0; neuron < neuronCount; ++neuron) {
+                    layerMean[neuron] *= invInputs;
+                }
+            }
+            else {
+                for (size_t neuron = 0; neuron < neuronCount; ++neuron) {
+                    layerMean[neuron] /= static_cast<T>(inputsPerIteration);
+                }
+            }
+            });
         return errorsMean;
     }
 

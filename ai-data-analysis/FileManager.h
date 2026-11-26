@@ -14,7 +14,7 @@
 class FileManager { //deprecated - update fnn saving to include layer-dependent activation function saving
 public:
     template<arithmetic T>
-    static Dataset<T> getDatasetFromCSV(const std::string& filePath) {
+    static Dataset<T> getDatasetFromCSV(const std::string& filePath, char separator = ',') {
         Dataset<T> dataset;
         //std::vector<std::vector<double>> inputVec, outputVec;
         std::ifstream file(filePath);
@@ -30,15 +30,21 @@ public:
             std::vector<T> row;
             std::stringstream ss(line);
             std::string cell;
-            unsigned i{};
-            while (std::getline(ss, cell, ',')) {
+            int i{};
+            while (std::getline(ss, cell, separator)) {
                 if (i == 0) {
                     dataset.desiredOutputVector.push_back(mfuncs::convertDigitToOutputVector<T>(std::stoi(cell)));
                     i++;
                     continue;
                 }
-                if(std::is_same<T, float>::value) row.push_back(std::stof(cell) / 255.0f);
-                else row.push_back(std::stod(cell) / 255.0);
+                if constexpr (std::is_same<T, float>::value) {
+                    const float inv255 = 1 / 255.f;
+                    row.push_back(std::stof(cell) * inv255);
+                }
+                else {
+                    const double inv255 = 1 / 255.f;
+                    row.push_back(std::stod(cell) * inv255);
+                }
             }
             dataset.inputVector.push_back(row);
         }
@@ -49,7 +55,7 @@ public:
 
     static std::vector<double> getInputVectorFrom28x28BMP(const std::string& filePath) {
         std::vector<double> inputVec;
-        inputVec.reserve(28 * 28);
+        inputVec.reserve(784); //28 * 28
         std::ifstream file;
 
         file.open(filePath, std::ios::in | std::ios::binary);

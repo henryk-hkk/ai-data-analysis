@@ -47,6 +47,9 @@
     <Filter Include="Datasets">
       <UniqueIdentifier>{d809b772-c373-457c-9204-1e2b14aad1da}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Utils\Math\Tensor">
+      <UniqueIdentifier>{b07c30cc-e251-4485-8199-81f128a14e2c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="FNNLayers.h">
@@ -108,6 +111,9 @@
     </ClInclude>
     <ClInclude Include="FNN.hpp">
       <Filter>Neural networks\FNN\Headers</Filter>
+    </ClInclude>
+    <ClInclude Include="Tensor.hpp">
+      <Filter>Utils\Math\Tensor</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
