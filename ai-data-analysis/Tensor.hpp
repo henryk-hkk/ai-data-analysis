@@ -89,11 +89,28 @@ public:
 	T& at(std::initializer_list<size_t> indices) {
 		return data_[elemIndex(indices)];
 	}
-
 	const T& at(std::initializer_list<size_t> indices) const {
 		return data_[elemIndex(indices)];
 	}
-	template<size_t Dimension2>
+	
+	template<std::convertible_to<size_t>... Indices>
+	T& operator()(Indices... indices) {
+		std::array<size_t, sizeof...(Indices)> idx{ static_cast<size_t>(indices)... };
+		if (idx.size() != shape_.size()) {
+			throw std::invalid_argument("Index count must match tensor dimension");
+		}
+		return data_[computeOffset(idx)];
+	}
+
+	template<std::convertible_to<size_t>... Indices>
+	const T& operator()(Indices... indices) const {
+		std::array<size_t, sizeof...(Indices)> idx{ static_cast<size_t>(indices)... };
+		if (idx.size() != shape_.size()) {
+			throw std::invalid_argument("Index count must match tensor dimension");
+		}
+		return data_[computeOffset(idx)];
+	}
+
 	Tensor<T> blockAt(std::initializer_list<size_t> indices) const {
 		const size_t offset = blockIndex(indices);
 		const size_t k = indices.size();
