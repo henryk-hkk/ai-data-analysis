@@ -110,7 +110,7 @@ static void testMatrixFNN() {
 static void testTensor() {
 	auto m = Matrix<float, MatrixLayout::ColumnMajor>(5, 6);
 	m.fillRandom(0, 20);
-	auto t1 = Tensor<float, 2>(m);
+	auto t1 = Tensor<float>(m);
 	m.print();
 	std::cout << "\n\n";
 	print(t1.getContent());

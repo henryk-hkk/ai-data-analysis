@@ -2,108 +2,127 @@
 #include <vector>
 #include <stdexcept>
 #include "Concepts.h"
-#include "Matrix.h"
-template<typename T, size_t Dimension>
+#include "Matrix.hpp"
+
+template<typename T>
 	requires arithmetic<T>
 class Tensor { // Row-Major ML Tensor
 private:
-	std::vector<T> data;
-	std::vector<size_t> dimensionSizes;
-	// [0][4] - shift to dimesion 0's index 4 start from data vector beginning, corresponding to T[4]. Sum of shifts [0][4] and [1][2] would correspond to T[4][2], etc.
-	// meant to speed up the indexing process instead of multiplying e.g. index = x4 + x3 * dimensionSize[2] + x2 * dimensionSize[1] + x1 * dimensionSize[0]
-	// will test if it really speeds it up, probably not because of cache misses
-	std::vector<std::vector<size_t>> dimensionShifts;
-	static std::vector<std::vector<size_t>> getDimensionShifts(std::vector<size_t> dimensionSizes) {
-		size_t dim = dimensionSizes.size();
-		std::vector<std::vector<size_t>> shifts(dim);
-		for (size_t i{}; i < dim; i++) {
-			shifts[i].resize(dimensionSizes[i]);
+	std::vector<T> data_;
+	std::vector<size_t> shape_{}; // zamiast dimensionSizes. To samo
+	std::vector<size_t> strides_{}; // zamiast shifts. Określa długość danego bloku
 
-			size_t dimensionBlockSize{ 1 };
-			for (size_t j{ i }; j < dim; j++)
-				dimensionBlockSize *= dimensionSizes[j];
-
-			for (size_t j{}; j < dimensionSizes[i]; j++)
-				shifts[i][j] = j * dimensionBlockSize;
+	static std::vector<size_t> computeStrides(const std::vector<size_t>& shape) {
+		if (shape.empty()) return {};
+		std::vector<size_t> strides(shape.size(), 1);
+		for (size_t i = shape.size() - 1; i > 0; --i) {
+			strides[i - 1] = strides[i] * shape[i];
 		}
-		return shifts;
+		return strides;
 	}
-	constexpr size_t index(std::initializer_list<size_t> indices) const {
-		if (indices.size() > Dimension) throw new std::invalid_argument("");
-		size_t index{};
-		for (size_t i{}; i < indices.size(); i++)
-			index += dimensionShifts[i][indices.data()[i]];
-		return index;
+	static size_t computeSize(const std::vector<size_t>& shape) noexcept {
+		if (shape.empty()) return 0;
+		size_t total = 1;
+		for (size_t s : shape) total *= s;
+		return total;
+	}
+	size_t offset(std::span<const size_t> indices) const {
+		if (indices.size() > shape_.size()) {
+			throw std::invalid_argument("");
+		}
+		size_t offset = 0;
+		for (size_t i = 0; i < indices.size(); ++i) {
+			if (indices[i] >= shape_[i]) {
+				throw std::out_of_range("");
+			}
+			offset += indices[i] * strides_[i];
+		}
+		return offset;
 	}
 public:
-	Tensor() {}
-	Tensor(std::initializer_list<size_t> dimensionSizes) : dimensionSizes(dimensionSizes) {
-		if (dimensionSizes.size() != Dimension) throw new std::invalid_argument("Dimension sizes array length must match provided tensor dimension");
-		data.resize(size());
-		dimensionShifts = getDimensionShifts(dimensionSizes);
-	}
-	Tensor(std::initializer_list<size_t> dimensionSizes, const std::vector<T>& values) : dimensionSizes(dimensionSizes), data(values) {
-		if (dimensionSizes.size() != Dimension) throw new std::invalid_argument("");
-		if (size() != values.size()) throw new std::invalid_argument("");
+	Tensor() = default;
 
-		dimensionShifts = getDimensionShifts(dimensionSizes);
+	Tensor(std::vector<size_t> shape)
+		: shape_(std::move(shape)),
+		strides_(computeStrides(shape_)),
+		data_(computeSize(shape_)) {}
+
+	Tensor(std::vector<size_t> shape, std::vector<T> values)
+		: shape_(std::move(shape)),
+		strides_(computeStrides(shape_)),
+		data_(std::move(values))
+	{
+		if (computeSize(shape_) != data_.size())
+			throw std::invalid_argument("");
 	}
 	template<MatrixLayout L>
-	Tensor(Matrix <T, L> m) {
-		if (L == MatrixLayout::ColumnMajor) m = m.transposed();
-		dimensionSizes = { m.getWidth(), m.getHeight() };
-		data = m.getContent();
-	}
-	constexpr size_t elemIndex(std::initializer_list<size_t> indices) const { // for individual elements
-		if (indices.size() != Dimension) throw new std::invalid_argument("");
-		return index(indices);
-	}
-	constexpr size_t blockIndex(std::initializer_list<size_t> indices) const { // for memory blocks
-		if (indices.size() >= Dimension) throw new std::invalid_argument("");
-		return index(indices);
-	}
-	std::vector<T> getContent() const {
-		return std::vector<T>(data);
-	}
-	size_t size() const {
-		return data.size();
-	}
-	size_t dimension() const {
-		return Dimension;
-	}
-	T at(size_t index) const {
-		if (index > data.size()) throw new std::invalid_argument("");
-		return data[index];
-	}
-	T at(std::initializer_list<size_t> indices) const {
-		return data[elemIndex(indices)];
-	}
-	template<size_t Dimension2>
-	Tensor<T, Dimension2> blockAt(std::initializer_list<size_t> indices) const {
-		if (indices.size() > Dimension) throw new std::invalid_argument("");
-		size_t newDim = Dimension - indices.size();
-		std::vector<size_t> newDimSizes(newDim);
-		size_t newDataLen = 1;
-		for (size_t i{ newDim }; i < Dimension; i++) {
-			size_t dimSize = dimensionSizes[newDim + i];
-			newDimSizes[i] = dimSize;
-			newDataLen *= dimSize;
+	explicit Tensor(const Matrix<T, L>& m) {
+		if constexpr (L == MatrixLayout::ColumnMajor) {
+			auto t = m.transposed();
+			shape_ = { t.getHeight(), t.getWidth() };
+			data_ = t.getContent();
 		}
-		std::vector<T> newData(newDataLen);
-		const size_t copyBlockIndex = blockIndex(indices);
-		for (size_t i{}; i < newDataLen; i++)
-			newData[i] = data[i + copyBlockIndex];
-		
-		return Tensor<T, newDim>(newDimSizes, newData);
+		else {
+			shape_ = { m.getHeight(), m.getWidth() };
+			data_ = m.getContent();
+		}
+		strides_ = computeStrides(shape_);
+	}
+	size_t elemIndex(std::initializer_list<size_t> indices) const { // for individual elements
+		if (indices.size() != shape_.size()) throw new std::invalid_argument("");
+		return offset({ indices.begin(), indices.size() });
+	}
+	size_t blockIndex(std::initializer_list<size_t> indices) const { // for memory blocks
+		if (indices.empty() || indices.size() >= shape_.size()) throw new std::invalid_argument("");
+		return offset({ indices.begin(), indices.size() });
 	}
 
-	std::vector<T> vectorAt(std::initializer_list<size_t> indices) const {
-		if (indices.size() != Dimension - 1) throw new std::invalid_argument("");
-		size_t len = dimensionSizes.back();
-		std::vector<T> result(len);
-		const size_t copyBlockIndex = blockIndex(indices);
-		for (size_t i{}; i < len; i++)
-			result[i] = data[i + copyBlockIndex];
-		return result;
+	T& at(size_t index) {
+		if (index > data_.size()) throw new std::out_of_range("");
+		return data_[index];
 	}
+	const T& at(size_t index) const {
+		if (index > data_.size()) throw new std::out_of_range("");
+		return data_[index];
+	}
+
+	T& at(std::initializer_list<size_t> indices) {
+		return data_[elemIndex(indices)];
+	}
+
+	const T& at(std::initializer_list<size_t> indices) const {
+		return data_[elemIndex(indices)];
+	}
+	template<size_t Dimension2>
+	Tensor<T> blockAt(std::initializer_list<size_t> indices) const {
+		const size_t offset = blockIndex(indices);
+		const size_t k = indices.size();
+		std::vector<size_t> newShape(shape_.begin() + k, shape_.end());
+		const size_t blockLen = strides_[k - 1];
+
+		std::vector<T> newData(data_.begin() + offset, data_.begin() + offset + blockLen);
+		return Tensor<T>(std::move(newShape), std::move(newData));
+	}
+
+	std::span<T> vectorAt(std::initializer_list<size_t> indices) {
+		if (shape_.empty() || indices.size() != shape_.size() - 1) {
+			throw std::invalid_argument("Vector index count must equal dimension - 1");
+		}
+		const size_t offset = offset({ indices.begin(), indices.size() });
+		return std::span<T>(data_.data() + offset, shape_.back());
+	}
+
+	void reshape(std::vector<size_t> newShape) {
+		if (computeSize(newShape) != data_.size()) {
+			throw std::invalid_argument("New shape total size must match current element count");
+		}
+		shape_ = std::move(newShape);
+		strides_ = computeStrides(shape_);
+	}
+
+	const std::vector<T>& getContent() const noexcept { return data_; }
+	const std::vector<size_t>& shape() const noexcept { return shape_; }
+	const std::vector<size_t>& strides() const noexcept { return strides_; }
+	size_t size() const noexcept { return data_.size(); }
+	size_t dimension() const noexcept { return shape_.size(); }
 };

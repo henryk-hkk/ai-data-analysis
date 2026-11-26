@@ -85,7 +85,7 @@
     <ClInclude Include="Concepts.h">
       <Filter>Utils</Filter>
     </ClInclude>
-    <ClInclude Include="Matrix.h">
+    <ClInclude Include="Matrix.hpp">
       <Filter>Utils\Math\Matrix</Filter>
     </ClInclude>
     <ClInclude Include="Dimensions.h">

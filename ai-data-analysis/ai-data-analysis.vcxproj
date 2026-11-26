@@ -158,7 +158,7 @@
     <ClInclude Include="LSTM.h" />
     <ClInclude Include="LSTMCell.h" />
     <ClInclude Include="LSTMLayer.h" />
-    <ClInclude Include="Matrix.h" />
+    <ClInclude Include="Matrix.hpp" />
     <ClInclude Include="mfuncs.h" />
     <ClInclude Include="Neuron.h" />
     <ClInclude Include="PCAnalyser.h" />

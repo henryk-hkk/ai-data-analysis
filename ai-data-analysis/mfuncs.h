@@ -3,7 +3,7 @@
 #include <cmath>
 #include <cstdlib>
 #include "Concepts.h"
-#include "Matrix.h"
+#include "Matrix.hpp"
 
 template<std::floating_point T>
 constexpr T RELU_LEAKAGE_RATE = T{ 0.05 };
