@@ -88,7 +88,7 @@ public:
         }
         return { std::move(B), std::move(U_reflectors), std::move(V1_reflectors) };
     }
-
+    
     [[nodiscard]] static BidiagonalForm<T> bidiagonalize(const Matrix<T>& m) {
         auto bEcon = bidiagonalizeEcon(m);
 

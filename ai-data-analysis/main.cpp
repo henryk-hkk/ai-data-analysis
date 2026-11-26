@@ -70,7 +70,7 @@ static void testMatrix() {
 	std::cout << dataMatrix;
 	dataMatrix = mfuncs::getMeanCenteredMatrix(dataMatrix);
 	std::cout << dataMatrix;
-	auto bidiagonal = SVDAgent<double>::bidiagonalize(dataMatrix);
+	auto bidiagonal = SVDAgent<float>::bidiagonalize(dataMatrix);
 	std::cout << "\n";
 	std::cout << bidiagonal.B;
 	std::cout << "\n";
@@ -102,7 +102,7 @@ static void testMatrixFNN() {
 	fnn.setActivationFunction(AFunc::RELU);
 	fnn.setOutputLayerActivationFunction(AFunc::SOFTMAX);
 
-	MatrixFNNBackpropA::trainFNN(fnn, dataset, 3, 0.05, 128);
+	MatrixFNNBackpropA::trainFNN(fnn, dataset, 3, 0.05f, 128);
 
 	dataset = FileManager::getDatasetFromCSV<float>("Datasets/mnist_test.csv");
 	std::cout << "\n" << MatrixFNNBackpropA::testFNN(fnn, dataset);
@@ -114,7 +114,6 @@ static void testTensor() {
 	m.print();
 	std::cout << "\n\n";
 	print(t1.getContent());
-
 }
 
 int main() {

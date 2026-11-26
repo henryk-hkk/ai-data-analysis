@@ -5,7 +5,7 @@
 #include "Matrix.h"
 template<typename T, size_t Dimension>
 	requires arithmetic<T>
-class Tensor {
+class Tensor { // Row-Major ML Tensor
 private:
 	std::vector<T> data;
 	std::vector<size_t> dimensionSizes;
@@ -39,13 +39,10 @@ public:
 	Tensor() {}
 	Tensor(std::initializer_list<size_t> dimensionSizes) : dimensionSizes(dimensionSizes) {
 		if (dimensionSizes.size() != Dimension) throw new std::invalid_argument("Dimension sizes array length must match provided tensor dimension");
-		size_t size{ 1 };
-		for (size_t i{}; i < Dimension; i++)
-			size *= dimensionSizes.data()[i];
-		data.resize(size);
+		data.resize(size());
 		dimensionShifts = getDimensionShifts(dimensionSizes);
 	}
-	Tensor(std::initializer_list<size_t> dimensionSizes, std::vector<T> values) : dimensionSizes(dimensionSizes), data(values) {
+	Tensor(std::initializer_list<size_t> dimensionSizes, const std::vector<T>& values) : dimensionSizes(dimensionSizes), data(values) {
 		if (dimensionSizes.size() != Dimension) throw new std::invalid_argument("");
 		if (size() != values.size()) throw new std::invalid_argument("");
 
@@ -54,7 +51,6 @@ public:
 	template<MatrixLayout L>
 	Tensor(Matrix <T, L> m) {
 		if (L == MatrixLayout::ColumnMajor) m = m.transposed();
-	
 		dimensionSizes = { m.getWidth(), m.getHeight() };
 		data = m.getContent();
 	}
@@ -70,10 +66,7 @@ public:
 		return std::vector<T>(data);
 	}
 	size_t size() const {
-		size_t size{ 1 };
-		for (size_t i{}; i < Dimension; i++)
-			size *= dimensionSizes.data()[i];
-		return size;
+		return data.size();
 	}
 	size_t dimension() const {
 		return Dimension;
@@ -86,8 +79,8 @@ public:
 		return data[elemIndex(indices)];
 	}
 	template<size_t Dimension2>
-	Tensor<T, Dimension2> blockAt(std::initializer_list<size_t> indices) {
-		if constexpr (indices.size() > Dimension) throw new std::invalid_argument("");
+	Tensor<T, Dimension2> blockAt(std::initializer_list<size_t> indices) const {
+		if (indices.size() > Dimension) throw new std::invalid_argument("");
 		size_t newDim = Dimension - indices.size();
 		std::vector<size_t> newDimSizes(newDim);
 		size_t newDataLen = 1;
@@ -101,6 +94,16 @@ public:
 		for (size_t i{}; i < newDataLen; i++)
 			newData[i] = data[i + copyBlockIndex];
 		
-		return new Tensor<T, newDim>(newDimSizes, newData);
+		return Tensor<T, newDim>(newDimSizes, newData);
+	}
+
+	std::vector<T> vectorAt(std::initializer_list<size_t> indices) const {
+		if (indices.size() != Dimension - 1) throw new std::invalid_argument("");
+		size_t len = dimensionSizes.back();
+		std::vector<T> result(len);
+		const size_t copyBlockIndex = blockIndex(indices);
+		for (size_t i{}; i < len; i++)
+			result[i] = data[i + copyBlockIndex];
+		return result;
 	}
 };

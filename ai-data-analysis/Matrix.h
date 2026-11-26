@@ -19,7 +19,7 @@
 #include "Dimensions.h"
 #include "CudaBackend.hpp"
 
-template<typename T = double, MatrixLayout L = MatrixLayout::RowMajor>
+template<typename T = float, MatrixLayout L = MatrixLayout::RowMajor>
     requires arithmetic<T>
 class Matrix {
 private:
@@ -285,12 +285,12 @@ public:
             });
         return result;
     }
-
-    [[nodiscard]] Matrix<T, L> subtract_horizontal(const std::vector<T>& horizontalVec) const {
+    template<arithmetic U>
+    [[nodiscard]] Matrix<T, L> subtract_horizontal(const std::vector<U>& horizontalVec) const {
         if (horizontalVec.size() != width)
             throw std::invalid_argument("Vector size must match matrix width.");
 
-        if constexpr (supports_gpu) {
+        if constexpr (supports_gpu && std::is_same_v<T,U>) {
             if (isDeviceValid()) {
                 cuda_backend::DeviceBuffer<T> d_vec;
                 d_vec.ensure_capacity(width);
@@ -310,7 +310,7 @@ public:
         auto row_indices = std::views::iota(size_t(0), height);
         std::for_each(std::execution::par_unseq, row_indices.begin(), row_indices.end(), [&](size_t y) {
             for (size_t x = 0; x < width; ++x) {
-                result.data[result.index(x, y)] -= horizontalVec[x];
+                result.data[result.index(x, y)] -= static_cast<T>(horizontalVec[x]);
             }
             });
         return result;
