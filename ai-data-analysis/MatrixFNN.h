@@ -7,17 +7,17 @@
 #include <utility>
 #include <vector>
 #include "Concepts.h"
-#include "CudaBackend.hpp"
 #include "FNNLayersMatrixForms.h"
 #include "mfuncs.h"
 #include "FNN.hpp"
+#include "GpuBackend.hpp"
 
-inline std::optional<cuda_backend::ActivationOp> toCudaActivation(AFunc func) {
+inline std::optional<GpuBackend::ActivationOp> toCudaActivation(AFunc func) {
     switch (func) {
-    case AFunc::LINEAR:  return cuda_backend::ActivationOp::Linear;
-    case AFunc::RELU:    return cuda_backend::ActivationOp::ReLU;
-    case AFunc::SIGMOID: return cuda_backend::ActivationOp::Sigmoid;
-    case AFunc::TANH:    return cuda_backend::ActivationOp::Tanh;
+    case AFunc::LINEAR:  return GpuBackend::ActivationOp::Linear;
+    case AFunc::RELU:    return GpuBackend::ActivationOp::ReLU;
+    case AFunc::SIGMOID: return GpuBackend::ActivationOp::Sigmoid;
+    case AFunc::TANH:    return GpuBackend::ActivationOp::Tanh;
     default:                          return std::nullopt;
     }
 }

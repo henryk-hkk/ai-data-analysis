@@ -53,8 +53,14 @@
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup Label="CudaAutoDetect">
+	<CudaVersion>13.5</CudaVersion>
+	<UseCuda Condition="$(Configuration.Contains('NonCUDA'))">false</UseCuda>
+	<UseCuda Condition="'$(UseCuda)' == '' and '$(Platform)' == 'x64' and Exists('$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).props') and Exists('$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).targets')">true</UseCuda>
+	<UseCuda Condition="'$(UseCuda)' == ''">false</UseCuda>
+  </PropertyGroup>
   <ImportGroup Label="ExtensionSettings">
-    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 13.5.props" />
+	<Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).props" Condition="'$(UseCuda)' == 'true'" />
   </ImportGroup>
   <ImportGroup Label="Shared">
   </ImportGroup>
@@ -120,9 +126,6 @@
     <Manifest>
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
-    <CudaCompile>
-      <AdditionalOptions>-std=c++20 %(AdditionalOptions)</AdditionalOptions>
-    </CudaCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <ClCompile>
@@ -142,14 +145,24 @@
       <EnableSegmentHeap>true</EnableSegmentHeap>
     </Manifest>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(UseCuda)' == 'true'">
+	<CudaCompile>
+	  <AdditionalOptions>-std=c++20 %(AdditionalOptions)</AdditionalOptions>
+	</CudaCompile>
+	<Link>
+	  <AdditionalLibraryDirectories>$(CudaToolkitLibDir);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+	  <AdditionalDependencies>cudart_static.lib;%(AdditionalDependencies)</AdditionalDependencies>
+	</Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="AFunc.h" />
     <ClInclude Include="Concepts.h" />
-    <ClInclude Include="CudaBackend.hpp" />
     <ClInclude Include="Dataset.h" />
     <ClInclude Include="Dimensions.h" />
+    <ClInclude Include="DType.hpp" />
     <ClInclude Include="FileManager.h" />
     <ClInclude Include="FNN.hpp" />
+    <ClInclude Include="GpuBackend.hpp" />
     <ClInclude Include="MatrixFNNBackpropA.h" />
     <ClInclude Include="ObjectFNN.h" />
     <ClInclude Include="FNNLayers.h" />
@@ -173,9 +186,11 @@
     <ClCompile Include="mfuncs.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="CudaBackend.cu">
-      <FileType>CppCode</FileType>
-    </CudaCompile>
+	<CudaCompile Include="CudaBackend.cu" Condition="'$(UseCuda)' == 'true'" />
+	<None Include="CudaBackend.cu" Condition="'$(UseCuda)' != 'true'" />
+	<ClCompile Include="NullBackend.cpp">
+		<ExcludedFromBuild Condition="'$(UseCuda)' == 'true'">true</ExcludedFromBuild>
+	</ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Datasets\mnist_test.csv">
@@ -187,6 +202,6 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
-    <Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA 13.5.targets" />
+	<Import Project="$(VCTargetsPath)\BuildCustomizations\CUDA $(CudaVersion).targets" Condition="'$(UseCuda)' == 'true'" />
   </ImportGroup>
 </Project>

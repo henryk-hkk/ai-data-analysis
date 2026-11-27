@@ -25,7 +25,7 @@ public:
         size_t batchSize = 32,
         bool shuffle = true,
         bool getConsoleOutput = false,
-        bool useGpu = cuda_backend::is_gpu_available()
+        bool useGpu = GpuBackend::deviceAvailable()
     ) {
         if (fnn.layers.empty()) {
             throw std::logic_error("Cannot train a network with no weighted layers.");
@@ -94,7 +94,7 @@ public:
         const MatrixFNN<T, L>& fnn,
         const DatasetT& testDataset,
         size_t batchSize = 64,
-        bool useGpu = cuda_backend::is_gpu_available()
+        bool useGpu = GpuBackend::deviceAvailable()
     ) {
         if (fnn.layers.empty()) {
             throw std::logic_error("Cannot test a network with no weighted layers.");

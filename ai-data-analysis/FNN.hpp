@@ -5,7 +5,7 @@ enum class WeightInit {
 	He,      // ReLU, LeakyReLU
 	Uniform
 };
-
+// TODO: DODAJ SIMPLIFYING - CZYSZCZENIE/RESET MARTWYCH NEURONÓW
 template<typename T>
     requires arithmetic<T>
 class FNN { // Feedforward Neural Network

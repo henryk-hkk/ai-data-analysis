@@ -1,4 +1,4 @@
-#include "CudaBackend.hpp"
+#include "GpuBackend.hpp"
 #include <cuda_runtime.h>
 #include <atomic>
 #include <cmath>
@@ -113,6 +113,12 @@ namespace {
     CudaMemoryPool& get_memory_pool() {
         static CudaMemoryPool pool;
         return pool;
+    }
+
+    template <typename T>
+    __global__ void fill_kernel(T* __restrict__ dst, size_t n, T val) {
+        const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+        if (i < n) dst[i] = val;
     }
 
     template <typename T, bool A_RM, bool B_RM, bool C_RM, int TILE>
@@ -280,29 +286,29 @@ namespace {
 
     template <typename T>
     __global__ void activation_kernel(
-        const T* __restrict__ in, T* __restrict__ out, size_t n, cuda_backend::ActivationOp op
+        const T* __restrict__ in, T* __restrict__ out, size_t n, GpuBackend::ActivationOp op
     ) {
         const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
         if (i >= n) return;
 
         const T x = in[i];
         switch (op) {
-        case cuda_backend::ActivationOp::ReLU:
+        case GpuBackend::ActivationOp::ReLU:
             out[i] = (x > T{ 0 }) ? x : T{ 0 };
             break;
-        case cuda_backend::ActivationOp::Sigmoid:
+        case GpuBackend::ActivationOp::Sigmoid:
             if constexpr (std::is_same_v<T, float>)
                 out[i] = 1.0f / (1.0f + expf(-x));
             else
                 out[i] = static_cast<T>(1.0 / (1.0 + exp(-static_cast<double>(x))));
             break;
-        case cuda_backend::ActivationOp::Tanh:
+        case GpuBackend::ActivationOp::Tanh:
             if constexpr (std::is_same_v<T, float>)
                 out[i] = tanhf(x);
             else
                 out[i] = static_cast<T>(tanh(static_cast<double>(x)));
             break;
-        case cuda_backend::ActivationOp::Linear:
+        case GpuBackend::ActivationOp::Linear:
         default:
             out[i] = x;
             break;
@@ -311,23 +317,23 @@ namespace {
 
     template <typename T>
     __global__ void activation_deriv_kernel(
-        const T* __restrict__ a, T* __restrict__ out, size_t n, cuda_backend::ActivationOp op
+        const T* __restrict__ a, T* __restrict__ out, size_t n, GpuBackend::ActivationOp op
     ) {
         const size_t i = static_cast<size_t>(blockIdx.x) * blockDim.x + threadIdx.x;
         if (i >= n) return;
 
         const T val = a[i];
         switch (op) {
-        case cuda_backend::ActivationOp::ReLU:
+        case GpuBackend::ActivationOp::ReLU:
             out[i] = (val > T{ 0 }) ? T{ 1 } : T{ 0 };
             break;
-        case cuda_backend::ActivationOp::Sigmoid:
+        case GpuBackend::ActivationOp::Sigmoid:
             out[i] = val * (T{ 1 } - val);
             break;
-        case cuda_backend::ActivationOp::Tanh:
+        case GpuBackend::ActivationOp::Tanh:
             out[i] = T{ 1 } - val * val;
             break;
-        case cuda_backend::ActivationOp::Linear:
+        case GpuBackend::ActivationOp::Linear:
         default:
             out[i] = T{ 1 };
             break;
@@ -389,221 +395,219 @@ namespace {
         return static_cast<unsigned int>((count + threads - 1) / threads);
     }
 
+} // namespace
+
+bool GpuBackend::deviceAvailable() {
+    int deviceCount = 0;
+    cudaError_t err = cudaGetDeviceCount(&deviceCount);
+    return (err == cudaSuccess && deviceCount > 0);
 }
 
-namespace cuda_backend {
+void* GpuBackend::alloc(size_t bytes) {
+    if (bytes == 0) return nullptr;
+    return get_memory_pool().allocate(bytes);
+}
 
-    bool is_gpu_available() {
-        int deviceCount = 0;
-        cudaError_t err = cudaGetDeviceCount(&deviceCount);
-        return (err == cudaSuccess && deviceCount > 0);
+void GpuBackend::free(void* ptr) noexcept {
+    if (!ptr) return;
+    if (g_pool_alive.load(std::memory_order_acquire)) {
+        get_memory_pool().deallocate(ptr);
+    }
+    else {
+        cudaFree(ptr);
+    }
+}
+
+void GpuBackend::clear_device_pool() noexcept {
+    if (g_pool_alive.load(std::memory_order_acquire)) {
+        get_memory_pool().clear();
+    }
+}
+
+void GpuBackend::copy_Host2Device(void* dst_dev, const void* src_host, size_t bytes) {
+    if (bytes > 0) {
+        CUDA_CHECK(cudaMemcpy(dst_dev, src_host, bytes, cudaMemcpyHostToDevice));
+    }
+}
+
+void GpuBackend::copy_Device2Host(void* dst_host, const void* src_dev, size_t bytes) {
+    if (bytes > 0) {
+        CUDA_CHECK(cudaMemcpy(dst_host, src_dev, bytes, cudaMemcpyDeviceToHost));
+    }
+}
+
+void GpuBackend::copy_Device2Device(void* dst_dev, const void* src_dev, size_t bytes) {
+    if (bytes > 0) {
+        CUDA_CHECK(cudaMemcpy(dst_dev, src_dev, bytes, cudaMemcpyDeviceToDevice));
+    }
+}
+
+void GpuBackend::zero(void* dst_dev, size_t bytes) {
+    if (bytes > 0) {
+        CUDA_CHECK(cudaMemset(dst_dev, 0, bytes));
+    }
+}
+
+template <gpu_compatible T>
+void GpuBackend::fill(T* dst_dev, size_t count, T val) {
+    if (count == 0) return;
+    fill_kernel<T> << <grid1D(count), 256 >> > (dst_dev, count, val);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+template <gpu_compatible T>
+void GpuBackend::matmul(
+    const T* d_A, size_t A_height, size_t K, bool A_rowMajor,
+    const T* d_B, size_t B_width, bool B_rowMajor,
+    T* d_C, bool C_rowMajor
+) {
+    const size_t sizeC = A_height * B_width;
+    if (sizeC == 0) return;
+
+    if (K == 0) {
+        GpuBackend::zero(d_C, sizeC * sizeof(T));
+        return;
     }
 
-    void* alloc_device(size_t bytes) {
-        if (bytes == 0) return nullptr;
-        return get_memory_pool().allocate(bytes);
+    constexpr size_t maxDim = std::numeric_limits<unsigned int>::max();
+    if (A_height > maxDim || K > maxDim || B_width > maxDim) {
+        throw std::overflow_error("Matrix dimensions exceed 32-bit CUDA kernel indexing limit");
     }
 
-    void free_device(void* ptr) noexcept {
-        if (!ptr) return;
-        if (g_pool_alive.load(std::memory_order_acquire)) {
-            get_memory_pool().deallocate(ptr);
-        }
-        else {
-            cudaFree(ptr);
-        }
-    }
+    constexpr int TILE = 16;
+    dim3 blockDim(TILE, TILE);
+    dim3 gridDim(
+        static_cast<unsigned int>((B_width + TILE - 1) / TILE),
+        static_cast<unsigned int>((A_height + TILE - 1) / TILE)
+    );
 
-    void clear_device_pool() noexcept {
-        if (g_pool_alive.load(std::memory_order_acquire)) {
-            get_memory_pool().clear();
-        }
-    }
+    dispatch_tiled_matmul<T, TILE>(
+        gridDim, blockDim,
+        d_A, static_cast<unsigned int>(A_height), static_cast<unsigned int>(K), A_rowMajor,
+        d_B, static_cast<unsigned int>(B_width), B_rowMajor,
+        d_C, C_rowMajor
+    );
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    void copy_h2d(void* dst_dev, const void* src_host, size_t bytes) {
-        if (bytes > 0) {
-            CUDA_CHECK(cudaMemcpy(dst_dev, src_host, bytes, cudaMemcpyHostToDevice));
-        }
-    }
+template <gpu_compatible T>
+void GpuBackend::subtract(const T* d_A, const T* d_B, T* d_C, size_t count) {
+    if (count == 0) return;
+    sub_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    void copy_d2h(void* dst_host, const void* src_dev, size_t bytes) {
-        if (bytes > 0) {
-            CUDA_CHECK(cudaMemcpy(dst_host, src_dev, bytes, cudaMemcpyDeviceToHost));
-        }
-    }
+template <gpu_compatible T>
+void GpuBackend::scale(const T* d_A, T scalar, T* d_C, size_t count) {
+    if (count == 0) return;
+    scale_kernel<T> << <grid1D(count), 256 >> > (d_A, scalar, d_C, count);
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    void copy_d2d(void* dst_dev, const void* src_dev, size_t bytes) {
-        if (bytes > 0) {
-            CUDA_CHECK(cudaMemcpy(dst_dev, src_dev, bytes, cudaMemcpyDeviceToDevice));
-        }
-    }
+template <gpu_compatible T>
+void GpuBackend::hadamard(const T* d_A, const T* d_B, T* d_C, size_t count) {
+    if (count == 0) return;
+    hadamard_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    void memset_device_zero(void* dst_dev, size_t bytes) {
-        if (bytes > 0) {
-            CUDA_CHECK(cudaMemset(dst_dev, 0, bytes));
-        }
-    }
-    template <typename T>
-    void memset_device_fill(void* dst_dev, size_t bytes, T val) {
-        if (bytes > 0) {
-            CUDA_CHECK(cudaMemset(dst_dev, val, bytes));
-        }
-    }
+template <gpu_compatible T>
+void GpuBackend::axpy_subtract(T* d_W, const T* d_dW, T lr, size_t count) {
+    if (count == 0) return;
+    axpy_sub_inplace_kernel<T> << <grid1D(count), 256 >> > (d_W, d_dW, lr, count);
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    template <typename T>
-    void multiply_matrices_device(
-        const T* d_A, size_t A_height, size_t K, bool A_rowMajor,
-        const T* d_B, size_t B_width, bool B_rowMajor,
-        T* d_C, bool C_rowMajor
-    ) {
-        const size_t sizeC = A_height * B_width;
-        if (sizeC == 0) return;
-
-        if (K == 0) {
-            memset_device_zero(d_C, sizeC * sizeof(T));
-            return;
-        }
-
-        constexpr size_t maxDim = std::numeric_limits<unsigned int>::max();
-        if (A_height > maxDim || K > maxDim || B_width > maxDim) {
-            throw std::overflow_error("Matrix dimensions exceed 32-bit CUDA kernel indexing limit");
-        }
-
-        constexpr int TILE = 16;
-        dim3 blockDim(TILE, TILE);
-        dim3 gridDim(
-            static_cast<unsigned int>((B_width + TILE - 1) / TILE),
-            static_cast<unsigned int>((A_height + TILE - 1) / TILE)
+template <gpu_compatible T>
+void GpuBackend::add_horizontal(
+    const T* d_A, const T* d_vec, T* d_C,
+    size_t height, size_t width, bool rowMajor, T sign
+) {
+    if (height == 0 || width == 0) return;
+    dim3 blockDim(16, 16);
+    dim3 gridDim(
+        static_cast<unsigned int>((width + 15) / 16),
+        static_cast<unsigned int>((height + 15) / 16)
+    );
+    add_horizontal_kernel<T> << <gridDim, blockDim >> > (
+        d_A, d_vec, d_C,
+        static_cast<unsigned int>(height), static_cast<unsigned int>(width),
+        rowMajor, sign
         );
+    CUDA_CHECK(cudaGetLastError());
+}
 
-        dispatch_tiled_matmul<T, TILE>(
-            gridDim, blockDim,
-            d_A, static_cast<unsigned int>(A_height), static_cast<unsigned int>(K), A_rowMajor,
-            d_B, static_cast<unsigned int>(B_width), B_rowMajor,
-            d_C, C_rowMajor
+template <gpu_compatible T>
+void GpuBackend::transpose(
+    const T* d_in, T* d_out,
+    size_t height, size_t width, bool rowMajor
+) {
+    if (height == 0 || width == 0) return;
+    constexpr int TILE = 16;
+    const unsigned int M = static_cast<unsigned int>(rowMajor ? height : width);
+    const unsigned int N = static_cast<unsigned int>(rowMajor ? width : height);
+    dim3 blockDim(TILE, TILE);
+    dim3 gridDim((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
+    transpose_tiled_kernel<T, TILE> << <gridDim, blockDim >> > (d_in, d_out, M, N);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+template <gpu_compatible T>
+void GpuBackend::activation(const T* d_in, T* d_out, size_t count, ActivationOp op) {
+    if (count == 0) return;
+    activation_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+template <gpu_compatible T>
+void GpuBackend::activation_deriv(const T* d_in, T* d_out, size_t count, ActivationOp op) {
+    if (count == 0) return;
+    activation_deriv_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
+    CUDA_CHECK(cudaGetLastError());
+}
+
+template <gpu_compatible T>
+void GpuBackend::softmax_rows(
+    const T* d_in, T* d_out,
+    size_t height, size_t width, bool rowMajor
+) {
+    if (height == 0 || width == 0) return;
+    softmax_rows_kernel<T> << <grid1D(height, 128), 128 >> > (
+        d_in, d_out,
+        static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
         );
-        CUDA_CHECK(cudaGetLastError());
-    }
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    template <typename T>
-    void sub_device(const T* d_A, const T* d_B, T* d_C, size_t count) {
-        if (count == 0) return;
-        sub_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void scale_device(const T* d_A, T scalar, T* d_C, size_t count) {
-        if (count == 0) return;
-        scale_kernel<T> << <grid1D(count), 256 >> > (d_A, scalar, d_C, count);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void hadamard_device(const T* d_A, const T* d_B, T* d_C, size_t count) {
-        if (count == 0) return;
-        hadamard_kernel<T> << <grid1D(count), 256 >> > (d_A, d_B, d_C, count);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void axpy_sub_inplace_device(T* d_W, const T* d_dW, T lr, size_t count) {
-        if (count == 0) return;
-        axpy_sub_inplace_kernel<T> << <grid1D(count), 256 >> > (d_W, d_dW, lr, count);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void add_horizontal_device(
-        const T* d_A, const T* d_vec, T* d_C,
-        size_t height, size_t width, bool rowMajor, T sign
-    ) {
-        if (height == 0 || width == 0) return;
-        dim3 blockDim(16, 16);
-        dim3 gridDim(
-            static_cast<unsigned int>((width + 15) / 16),
-            static_cast<unsigned int>((height + 15) / 16)
+template <gpu_compatible T>
+void GpuBackend::mean_columns(
+    const T* d_in, T* d_out,
+    size_t height, size_t width, bool rowMajor
+) {
+    if (height == 0 || width == 0) return;
+    mean_columns_kernel<T> << <grid1D(width, 128), 128 >> > (
+        d_in, d_out,
+        static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
         );
-        add_horizontal_kernel<T> << <gridDim, blockDim >> > (
-            d_A, d_vec, d_C,
-            static_cast<unsigned int>(height), static_cast<unsigned int>(width),
-            rowMajor, sign
-            );
-        CUDA_CHECK(cudaGetLastError());
-    }
+    CUDA_CHECK(cudaGetLastError());
+}
 
-    template <typename T>
-    void transpose_device(
-        const T* d_in, T* d_out,
-        size_t height, size_t width, bool rowMajor
-    ) {
-        if (height == 0 || width == 0) return;
-        constexpr int TILE = 16;
-        const unsigned int M = static_cast<unsigned int>(rowMajor ? height : width);
-        const unsigned int N = static_cast<unsigned int>(rowMajor ? width : height);
-        dim3 blockDim(TILE, TILE);
-        dim3 gridDim((N + TILE - 1) / TILE, (M + TILE - 1) / TILE);
-        transpose_tiled_kernel<T, TILE> << <gridDim, blockDim >> > (d_in, d_out, M, N);
-        CUDA_CHECK(cudaGetLastError());
-    }
+#define INSTANTIATE_CUDA_OPS(T)                                                                               \
+    template void GpuBackend::fill<T>(T*, size_t, T);                                                         \
+    template void GpuBackend::matmul<T>(const T*, size_t, size_t, bool, const T*, size_t, bool, T*, bool);    \
+    template void GpuBackend::subtract<T>(const T*, const T*, T*, size_t);                                    \
+    template void GpuBackend::scale<T>(const T*, T, T*, size_t);                                              \
+    template void GpuBackend::hadamard<T>(const T*, const T*, T*, size_t);                                    \
+    template void GpuBackend::axpy_subtract<T>(T*, const T*, T, size_t);                                      \
+    template void GpuBackend::add_horizontal<T>(const T*, const T*, T*, size_t, size_t, bool, T);             \
+    template void GpuBackend::transpose<T>(const T*, T*, size_t, size_t, bool);                               \
+    template void GpuBackend::activation<T>(const T*, T*, size_t, GpuBackend::ActivationOp);                  \
+    template void GpuBackend::activation_deriv<T>(const T*, T*, size_t, GpuBackend::ActivationOp);            \
+    template void GpuBackend::softmax_rows<T>(const T*, T*, size_t, size_t, bool);                            \
+    template void GpuBackend::mean_columns<T>(const T*, T*, size_t, size_t, bool);
 
-    template <typename T>
-    void activation_device(const T* d_in, T* d_out, size_t count, ActivationOp op) {
-        if (count == 0) return;
-        activation_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void activation_deriv_device(const T* d_in, T* d_out, size_t count, ActivationOp op) {
-        if (count == 0) return;
-        activation_deriv_kernel<T> << <grid1D(count), 256 >> > (d_in, d_out, count, op);
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void softmax_rows_device(
-        const T* d_in, T* d_out,
-        size_t height, size_t width, bool rowMajor
-    ) {
-        if (height == 0 || width == 0) return;
-        softmax_rows_kernel<T> << <grid1D(height, 128), 128 >> > (
-            d_in, d_out,
-            static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
-            );
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-    template <typename T>
-    void mean_columns_device(
-        const T* d_in, T* d_out,
-        size_t height, size_t width, bool rowMajor
-    ) {
-        if (height == 0 || width == 0) return;
-        mean_columns_kernel<T> << <grid1D(width, 128), 128 >> > (
-            d_in, d_out,
-            static_cast<unsigned int>(height), static_cast<unsigned int>(width), rowMajor
-            );
-        CUDA_CHECK(cudaGetLastError());
-    }
-
-#define INSTANTIATE_CUDA_OPS(T)                                                                    \
-    template void multiply_matrices_device<T>(const T*, size_t, size_t, bool, const T*, size_t, bool, T*, bool); \
-    template void sub_device<T>(const T*, const T*, T*, size_t);                                   \
-    template void scale_device<T>(const T*, T, T*, size_t);                                        \
-    template void hadamard_device<T>(const T*, const T*, T*, size_t);                              \
-    template void axpy_sub_inplace_device<T>(T*, const T*, T, size_t);                             \
-    template void add_horizontal_device<T>(const T*, const T*, T*, size_t, size_t, bool, T);       \
-    template void transpose_device<T>(const T*, T*, size_t, size_t, bool);                         \
-    template void activation_device<T>(const T*, T*, size_t, ActivationOp);                        \
-    template void activation_deriv_device<T>(const T*, T*, size_t, ActivationOp);                  \
-    template void softmax_rows_device<T>(const T*, T*, size_t, size_t, bool);                      \
-    template void mean_columns_device<T>(const T*, T*, size_t, size_t, bool);
-
-    INSTANTIATE_CUDA_OPS(float)
-        INSTANTIATE_CUDA_OPS(double)
-        INSTANTIATE_CUDA_OPS(int)
+INSTANTIATE_CUDA_OPS(float)
+INSTANTIATE_CUDA_OPS(double)
+INSTANTIATE_CUDA_OPS(int)
 
 #undef INSTANTIATE_CUDA_OPS
-
-}

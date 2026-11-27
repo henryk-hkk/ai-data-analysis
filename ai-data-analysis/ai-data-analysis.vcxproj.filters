@@ -35,9 +35,6 @@
     <Filter Include="Utils\Math\Matrix">
       <UniqueIdentifier>{7a940ff2-ef33-413d-b287-c90d7b45268c}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Utils\Cuda">
-      <UniqueIdentifier>{57c35188-bd5e-44ac-b429-f1281bc0be44}</UniqueIdentifier>
-    </Filter>
     <Filter Include="Neural networks\FNN\Matrix">
       <UniqueIdentifier>{ad6f14ef-7ef1-4013-b8fd-99be897b19f7}</UniqueIdentifier>
     </Filter>
@@ -49,6 +46,9 @@
     </Filter>
     <Filter Include="Utils\Math\Tensor">
       <UniqueIdentifier>{b07c30cc-e251-4485-8199-81f128a14e2c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Utils\GPU">
+      <UniqueIdentifier>{22d0ed18-00e5-486c-9deb-0d33374eeec9}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
   <ItemGroup>
@@ -94,9 +94,6 @@
     <ClInclude Include="AFunc.h">
       <Filter>Utils\Math</Filter>
     </ClInclude>
-    <ClInclude Include="CudaBackend.hpp">
-      <Filter>Utils\Cuda</Filter>
-    </ClInclude>
     <ClInclude Include="LayerVectors.h">
       <Filter>Neural networks\FNN\Headers</Filter>
     </ClInclude>
@@ -115,6 +112,10 @@
     <ClInclude Include="Tensor.hpp">
       <Filter>Utils\Math\Tensor</Filter>
     </ClInclude>
+    <ClInclude Include="GpuBackend.hpp">
+      <Filter>Utils\GPU</Filter>
+    </ClInclude>
+    <ClInclude Include="DType.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -132,11 +133,9 @@
     <ClCompile Include="MatrixFNN.h">
       <Filter>Neural networks\FNN\Matrix</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <CudaCompile Include="CudaBackend.cu">
-      <Filter>Utils\Cuda</Filter>
-    </CudaCompile>
+    <ClCompile Include="NullBackend.cpp">
+      <Filter>Utils\GPU</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="Datasets\mnist_train.csv">
@@ -145,5 +144,10 @@
     <None Include="Datasets\mnist_test.csv">
       <Filter>Datasets</Filter>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="CudaBackend.cu">
+      <Filter>Utils\GPU</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

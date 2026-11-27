@@ -102,7 +102,7 @@ static void testMatrixFNN() {
 	fnn.setActivationFunction(AFunc::RELU);
 	fnn.setOutputLayerActivationFunction(AFunc::SOFTMAX);
 
-	MatrixFNNBackpropA::trainFNN(fnn, dataset, 3, 0.05f, 128);
+	MatrixFNNBackpropA::trainFNN(fnn, dataset, 5, 0.05f, 128, true, true);
 
 	dataset = FileManager::getDatasetFromCSV<float>("Datasets/mnist_test.csv");
 	std::cout << "\n" << MatrixFNNBackpropA::testFNN(fnn, dataset);
@@ -117,5 +117,5 @@ static void testTensor() {
 }
 
 int main() {
-	testTensor();
+	testMatrixFNN();
 }

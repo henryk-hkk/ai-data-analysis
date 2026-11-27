@@ -17,7 +17,7 @@
 #include "Concepts.h"
 #include "MatrixLayout.h"
 #include "Dimensions.h"
-#include "CudaBackend.hpp"
+#include "GpuBackend.hpp"
 
 template<typename T = float, MatrixLayout L = MatrixLayout::RowMajor>
     requires arithmetic<T>
@@ -25,7 +25,7 @@ class Matrix {
 private:
     size_t width = 0, height = 0;
     mutable std::vector<T> data;
-    mutable cuda_backend::DeviceBuffer<T> d_buf;
+    mutable GpuBackend::DeviceBuffer<T> d_buf;
 
     mutable bool hostDirty = false;   // VRAM ma nowsze dane niż RAM
     mutable bool deviceDirty = true;  // RAM ma nowsze dane niż VRAM
@@ -38,8 +38,7 @@ private:
     constexpr size_t index(size_t x, size_t y) const {
         if constexpr (L == MatrixLayout::RowMajor)
             return y * width + x;
-        else
-            return x * height + y;
+        else return x * height + y;
     }
 
     template<typename U, MatrixLayout L2>
@@ -48,18 +47,19 @@ private:
 
     static bool gpuAvailable() {
         if constexpr (supports_gpu) {
-            static const bool hw_available = cuda_backend::is_gpu_available();
-            return hw_available && cuda_backend::is_gpu_available();
+            static const bool hardware_available = GpuBackend::deviceAvailable();
+            return hardware_available;
         }
         return false;
     }
+
     static Matrix<T, L> createOnDevice(size_t rows, size_t cols) { // Allocates new Matrix on the GPU
         Matrix<T, L> m;
         m.height = rows;
         m.width = cols;
         const size_t n = rows * cols;
         if (n > 0) {
-            m.d_buf.ensure_capacity(n);
+            m.d_buf.ensureCapacity(n);
             m.hostDirty = true;
             m.deviceDirty = false;
         }
@@ -107,8 +107,8 @@ public:
 
         if constexpr (supports_gpu) {
             if (other.isDeviceValid()) {
-                d_buf.ensure_capacity(n);
-                cuda_backend::copy_d2d(d_buf.get(), other.d_buf.get(), n * sizeof(T));
+                d_buf.ensureCapacity(n);
+                GpuBackend::copy_Device2Device(d_buf.get(), other.d_buf.get(), n * sizeof(T));
                 hostDirty = true;
                 deviceDirty = false;
                 return;
@@ -135,8 +135,8 @@ public:
 
         if constexpr (supports_gpu) {
             if (other.isDeviceValid()) {
-                d_buf.ensure_capacity(n);
-                cuda_backend::copy_d2d(d_buf.get(), other.d_buf.get(), n * sizeof(T));
+                d_buf.ensureCapacity(n);
+                GpuBackend::copy_Device2Device(d_buf.get(), other.d_buf.get(), n * sizeof(T));
                 hostDirty = true;
                 deviceDirty = false;
                 return *this;
@@ -164,11 +164,11 @@ public:
         const size_t n = elementCount();
         if (n == 0 || isDeviceValid()) return;
 
-        d_buf.ensure_capacity(n);
+        d_buf.ensureCapacity(n);
         if (data.size() != n) {
             data.resize(n, T{});
         }
-        cuda_backend::copy_h2d(d_buf.get(), data.data(), n * sizeof(T));
+        GpuBackend::copy_Host2Device(d_buf.get(), data.data(), n * sizeof(T));
         deviceDirty = false;
     }
     void syncToHost() const {
@@ -177,7 +177,7 @@ public:
         data.resize(n);
         if constexpr (supports_gpu) {
             if (n > 0 && d_buf.allocated()) {
-                cuda_backend::copy_d2h(data.data(), d_buf.get(), n * sizeof(T));
+                GpuBackend::copy_Device2Host(data.data(), d_buf.get(), n * sizeof(T));
             }
         }
         hostDirty = false;
@@ -205,7 +205,7 @@ public:
                 rowVec.syncToDevice();
 
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::add_horizontal_device<T>(
+                GpuBackend::add_horizontal<T>(
                     d_buf.get(), rowVec.d_buf.get(), result.d_buf.get(),
                     height, width, L == MatrixLayout::RowMajor, T{ 1 }
                 );
@@ -231,12 +231,12 @@ public:
 
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
-                cuda_backend::DeviceBuffer<T> d_vec;
-                d_vec.ensure_capacity(width);
-                cuda_backend::copy_h2d(d_vec.get(), horizontalVec.data(), width * sizeof(T));
+                GpuBackend::DeviceBuffer<T> d_vec;
+                d_vec.ensureCapacity(width);
+                GpuBackend::copy_Host2Device(d_vec.get(), horizontalVec.data(), width * sizeof(T));
 
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::add_horizontal_device<T>(
+                GpuBackend::add_horizontal<T>(
                     d_buf.get(), d_vec.get(), result.d_buf.get(),
                     height, width, L == MatrixLayout::RowMajor, T{ 1 }
                 );
@@ -266,7 +266,7 @@ public:
                 rowVec.syncToDevice();
 
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::add_horizontal_device<T>(
+                GpuBackend::add_horizontal<T>(
                     d_buf.get(), rowVec.d_buf.get(), result.d_buf.get(),
                     height, width, L == MatrixLayout::RowMajor, static_cast<T>(-1)
                 );
@@ -292,12 +292,12 @@ public:
 
         if constexpr (supports_gpu && std::is_same_v<T,U>) {
             if (isDeviceValid()) {
-                cuda_backend::DeviceBuffer<T> d_vec;
-                d_vec.ensure_capacity(width);
-                cuda_backend::copy_h2d(d_vec.get(), horizontalVec.data(), width * sizeof(T));
+                GpuBackend::DeviceBuffer<T> d_vec;
+                d_vec.ensureCapacity(width);
+                GpuBackend::copy_Host2Device(d_vec.get(), horizontalVec.data(), width * sizeof(T));
 
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::add_horizontal_device<T>(
+                GpuBackend::add_horizontal<T>(
                     d_buf.get(), d_vec.get(), result.d_buf.get(),
                     height, width, L == MatrixLayout::RowMajor, static_cast<T>(-1)
                 );
@@ -326,7 +326,7 @@ public:
                 syncToDevice();
                 other.syncToDevice();
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::sub_device<T>(d_buf.get(), other.d_buf.get(), result.d_buf.get(), elementCount());
+                GpuBackend::subtract<T>(d_buf.get(), other.d_buf.get(), result.d_buf.get(), elementCount());
                 return result;
             }
         }
@@ -343,7 +343,7 @@ public:
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::scale_device<T>(d_buf.get(), a, result.d_buf.get(), elementCount());
+                GpuBackend::scale<T>(d_buf.get(), a, result.d_buf.get(), elementCount());
                 return result;
             }
         }
@@ -365,7 +365,7 @@ public:
             if (gpuAvailable() && (isDeviceValid() || grad.isDeviceValid())) {
                 syncToDevice();
                 grad.syncToDevice();
-                cuda_backend::axpy_sub_inplace_device<T>(d_buf.get(), grad.d_buf.get(), lr, elementCount());
+                GpuBackend::axpy_subtract<T>(d_buf.get(), grad.d_buf.get(), lr, elementCount());
                 hostDirty = true;
                 deviceDirty = false;
                 return;
@@ -403,7 +403,7 @@ public:
         m2.syncToDevice();
 
         Matrix<T, L> result = createOnDevice(height, m2.width);
-        cuda_backend::multiply_matrices_device<T>(
+        GpuBackend::matmul<T>(
             d_buf.get(), height, width, L == MatrixLayout::RowMajor,
             m2.d_buf.get(), m2.width, L2 == MatrixLayout::RowMajor,
             result.d_buf.get(), L == MatrixLayout::RowMajor
@@ -478,11 +478,11 @@ public:
         return result;
     }
 
-    [[nodiscard]] Matrix<T, L> apply_activation(cuda_backend::ActivationOp op) const {
+    [[nodiscard]] Matrix<T, L> apply_activation(GpuBackend::ActivationOp op) const {
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::activation_device<T>(d_buf.get(), result.d_buf.get(), elementCount(), op);
+                GpuBackend::activation<T>(d_buf.get(), result.d_buf.get(), elementCount(), op);
                 return result;
             }
         }
@@ -490,20 +490,20 @@ public:
         return apply([op](T x) -> double {
             const double d = static_cast<double>(x);
             switch (op) {
-            case cuda_backend::ActivationOp::ReLU:    return d > 0.0 ? d : 0.0;
-            case cuda_backend::ActivationOp::Sigmoid: return 1.0 / (1.0 + std::exp(-d));
-            case cuda_backend::ActivationOp::Tanh:    return std::tanh(d);
-            case cuda_backend::ActivationOp::Linear:
+            case GpuBackend::ActivationOp::ReLU:    return d > 0.0 ? d : 0.0;
+            case GpuBackend::ActivationOp::Sigmoid: return 1.0 / (1.0 + std::exp(-d));
+            case GpuBackend::ActivationOp::Tanh:    return std::tanh(d);
+            case GpuBackend::ActivationOp::Linear:
             default:                                  return d;
             }
             });
     }
 
-    [[nodiscard]] Matrix<T, L> apply_activation_derivative(cuda_backend::ActivationOp op) const {
+    [[nodiscard]] Matrix<T, L> apply_activation_derivative(GpuBackend::ActivationOp op) const {
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::activation_deriv_device<T>(d_buf.get(), result.d_buf.get(), elementCount(), op);
+                GpuBackend::activation_deriv<T>(d_buf.get(), result.d_buf.get(), elementCount(), op);
                 return result;
             }
         }
@@ -511,10 +511,10 @@ public:
         return apply([op](T a) -> double {
             const double d = static_cast<double>(a);
             switch (op) {
-            case cuda_backend::ActivationOp::ReLU:    return d > 0.0 ? 1.0 : 0.0;
-            case cuda_backend::ActivationOp::Sigmoid: return d * (1.0 - d);
-            case cuda_backend::ActivationOp::Tanh:    return 1.0 - d * d;
-            case cuda_backend::ActivationOp::Linear:
+            case GpuBackend::ActivationOp::ReLU:    return d > 0.0 ? 1.0 : 0.0;
+            case GpuBackend::ActivationOp::Sigmoid: return d * (1.0 - d);
+            case GpuBackend::ActivationOp::Tanh:    return 1.0 - d * d;
+            case GpuBackend::ActivationOp::Linear:
             default:                                  return 1.0;
             }
             });
@@ -524,7 +524,7 @@ public:
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::softmax_rows_device<T>(
+                GpuBackend::softmax_rows<T>(
                     d_buf.get(), result.d_buf.get(), height, width, L == MatrixLayout::RowMajor
                 );
                 return result;
@@ -564,7 +564,7 @@ public:
                 syncToDevice();
                 other.syncToDevice();
                 Matrix<T, L> result = createOnDevice(height, width);
-                cuda_backend::hadamard_device<T>(d_buf.get(), other.d_buf.get(), result.d_buf.get(), elementCount());
+                GpuBackend::hadamard<T>(d_buf.get(), other.d_buf.get(), result.d_buf.get(), elementCount());
                 return result;
             }
         }
@@ -600,7 +600,7 @@ public:
     void fill(T val = T{0}) {
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
-                cuda_backend::memset_device_fill(d_buf.get(), elementCount() * sizeof(T), val);
+                GpuBackend::fill(d_buf.get(), elementCount() * sizeof(T), val);
                 hostDirty = true;
                 deviceDirty = false;
                 return;
@@ -678,7 +678,7 @@ public:
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> result = createOnDevice(1, width);
-                cuda_backend::mean_columns_device<T>(
+                GpuBackend::mean_columns<T>(
                     d_buf.get(), result.d_buf.get(), height, width, L == MatrixLayout::RowMajor
                 );
                 return result;
@@ -726,7 +726,7 @@ public:
         if constexpr (supports_gpu) {
             if (isDeviceValid()) {
                 Matrix<T, L> transposedM = createOnDevice(width, height);
-                cuda_backend::transpose_device<T>(
+                GpuBackend::transpose<T>(
                     d_buf.get(), transposedM.d_buf.get(), height, width, L == MatrixLayout::RowMajor
                 );
                 return transposedM;
